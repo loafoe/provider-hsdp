@@ -42,16 +42,18 @@ This provider uses the [go-dip-api](https://github.com/philips-software/go-dip-a
 
 ## Installation
 
-Install the provider using crossplane CLI or a DeploymentRuntimeConfig:
+This provider is not yet packaged as a Crossplane xpkg — it's installed as a
+plain Kubernetes Deployment plus manually-applied CRDs:
 
-```yaml
-apiVersion: pkg.crossplane.io/v1
-kind: Provider
-metadata:
-  name: provider-hsdp
-spec:
-  package: ghcr.io/loafoe/provider-hsdp:v0.3.0
+```shell
+kubectl apply -R -f package/crds
+kubectl apply -f deploy/provider-hsdp.yaml
 ```
+
+`deploy/provider-hsdp.yaml` creates a Deployment running
+`ghcr.io/loafoe/provider-hsdp:dev`, a ServiceAccount, and a
+ClusterRoleBinding to `cluster-admin`. Adjust the image tag and RBAC to
+suit your environment before applying to a production cluster.
 
 ## Configuration
 
@@ -116,7 +118,11 @@ stringData:
     }
 ```
 
-The secret can optionally override `region` and `environment` from the ProviderConfig spec.
+The secret can optionally override `region` and `environment` from the
+ProviderConfig spec, and may also set `token_audience` to override the JWT
+`aud` claim used for service login — required for Keycloak-backed IAM realms
+that validate against the realm issuer rather than the default access-token
+endpoint.
 
 ## Example Resources
 
@@ -132,8 +138,9 @@ spec:
   forProvider:
     name: my-organization
     description: My organization
-    parentOrganizationId: <parent-org-uuid>
+    parentOrgId: <parent-org-uuid>
   providerConfigRef:
+    kind: ClusterProviderConfig
     name: default
 ```
 
@@ -152,6 +159,7 @@ spec:
     propositionId: <proposition-uuid>
     globalReferenceId: my-app-ref
   providerConfigRef:
+    kind: ClusterProviderConfig
     name: default
 ```
 
@@ -180,6 +188,7 @@ spec:
       namespace: crossplane-system
       key: password
   providerConfigRef:
+    kind: ClusterProviderConfig
     name: default
 ```
 
@@ -187,10 +196,10 @@ spec:
 
 ### Prerequisites
 
-- Go 1.23+
-- Docker
+- Go 1.26+
+- [ko](https://ko.build/) (for building/pushing the container image)
 - kubectl
-- A Kubernetes cluster with Crossplane installed
+- A Kubernetes cluster with Crossplane v2 installed
 
 ### Build
 
@@ -207,7 +216,8 @@ make run
 ### Build and push image
 
 ```shell
-make docker-build docker-push IMG=ghcr.io/loafoe/provider-hsdp:v0.3.0
+KO_DOCKER_REPO=ghcr.io/loafoe/provider-hsdp \
+  ko build ./cmd/provider --bare --sbom=none --tags=dev --platform=linux/arm64
 ```
 
 ## License

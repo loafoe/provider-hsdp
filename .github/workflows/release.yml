@@ -12,6 +12,7 @@ permissions:
 
 env:
   GO_VERSION: '1.26'
+  DOCKER_BUILDX_VERSION: 'v0.23.0'
   REGISTRY: ghcr.io
 
 jobs:
@@ -23,14 +24,23 @@ jobs:
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
+          submodules: true
 
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
 
-      - name: Setup ko
-        uses: ko-build/setup-ko@v0.9
+      - name: Setup QEMU
+        uses: docker/setup-qemu-action@v2
+        with:
+          platforms: all
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          version: ${{ env.DOCKER_BUILDX_VERSION }}
+          install: true
 
       - name: Install cosign
         uses: sigstore/cosign-installer@v3
@@ -44,46 +54,46 @@ jobs:
 
       - name: Get image name
         id: image
-        run: echo "name=${{ env.REGISTRY }}/${GITHUB_REPOSITORY,,}" >> $GITHUB_OUTPUT
+        run: echo "name=${{ env.REGISTRY }}/${{ github.repository_owner }}/provider-hsdp" >> "$GITHUB_OUTPUT"
 
-      - name: Build and push with ko
-        id: ko
-        env:
-          KO_DOCKER_REPO: ${{ steps.image.outputs.name }}
-        run: |
-          digest=$(ko build ./cmd/provider \
-            --bare \
-            --sbom=none \
-            --tags=${{ github.ref_name }},latest \
-            --platform=linux/amd64,linux/arm64)
-          echo "digest=$digest" >> $GITHUB_OUTPUT
+      - name: Download Go modules
+        run: make modules.download modules.check
 
-      - name: Sign container image with cosign
+      # Cross-compiles the provider binary for each platform and builds a
+      # crossplane package (xpkg) per platform, embedding the corresponding
+      # runtime image. This is the same flow used to publish provider-orgmapper.
+      - name: Build provider package
+        run: make -j2 build.all
         env:
-          DIGEST: ${{ steps.ko.outputs.digest }}
+          BUILD_ARGS: "--load"
+
+      - name: Push provider package
         run: |
-          cosign sign --yes $DIGEST
+          make publish.artifacts \
+            XPKG_REG_ORGS=${{ env.REGISTRY }}/${{ github.repository_owner }} \
+            BRANCH_NAME=main \
+            VERSION=${{ github.ref_name }}
+
+      - name: Sign package image with cosign
+        run: cosign sign --yes ${{ steps.image.outputs.name }}:${{ github.ref_name }}
 
       - name: Verify signature
-        env:
-          DIGEST: ${{ steps.ko.outputs.digest }}
         run: |
-          cosign verify $DIGEST \
-            --certificate-identity-regexp="https://github.com/${GITHUB_REPOSITORY}/*" \
+          cosign verify ${{ steps.image.outputs.name }}:${{ github.ref_name }} \
+            --certificate-identity-regexp="https://github.com/${{ github.repository }}/*" \
             --certificate-oidc-issuer="https://token.actions.githubusercontent.com"
 
       - name: Generate SBOM
         uses: anchore/sbom-action@v0
         with:
-          image: ${{ steps.ko.outputs.digest }}
+          image: ${{ steps.image.outputs.name }}:${{ github.ref_name }}
           format: spdx-json
           output-file: sbom.spdx.json
 
       - name: Attest SBOM
-        env:
-          DIGEST: ${{ steps.ko.outputs.digest }}
         run: |
-          cosign attest --yes --predicate sbom.spdx.json --type spdxjson $DIGEST
+          cosign attest --yes --predicate sbom.spdx.json --type spdxjson \
+            ${{ steps.image.outputs.name }}:${{ github.ref_name }}
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

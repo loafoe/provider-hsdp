@@ -31,3 +31,13 @@ func IsValidUUID(s string) bool {
 func IsNotFoundOrInvalidID(statusCode int) bool {
 	return statusCode == 400 || statusCode == 404
 }
+
+// StringPtrOrNil returns a pointer to s, or nil if s is empty. Useful for
+// populating optional *string observation fields from a plain string API
+// response without surfacing an empty string as "set".
+func StringPtrOrNil(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}

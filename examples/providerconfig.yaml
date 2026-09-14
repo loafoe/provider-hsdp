@@ -1,4 +1,25 @@
-apiVersion: dip.m.crossplane.io/v1alpha1
+# ClusterProviderConfig is cluster-scoped and is the default ProviderConfig
+# kind referenced by namespaced managed resources (providerConfigRef.kind
+# defaults to ClusterProviderConfig, providerConfigRef.name defaults to
+# "default"), matching the Crossplane v2 convention.
+apiVersion: hsdp.crossplane.io/v1
+kind: ClusterProviderConfig
+metadata:
+  name: default
+spec:
+  region: us-east
+  environment: client-test
+  credentials:
+    source: Secret
+    secretRef:
+      name: dip-credentials
+      namespace: crossplane-system
+      key: credentials
+---
+# ProviderConfig is namespace-scoped and can be used to override credentials
+# for a specific tenant/namespace. Managed resources opt into it explicitly
+# via providerConfigRef: {kind: ProviderConfig, name: <name>}.
+apiVersion: hsdp.m.crossplane.io/v1
 kind: ProviderConfig
 metadata:
   name: default

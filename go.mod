@@ -1,4 +1,4 @@
-module github.com/crossplane/provider-template
+module github.com/loafoe/provider-hsdp
 
 go 1.26
 

@@ -1,6 +1,6 @@
-# provider-dip
+# provider-hsdp
 
-A native [Crossplane](https://crossplane.io/) 2.0 Provider for the Digital Innovation Platform (DIP), enabling declarative management of IAM, MDM, and Provisioning resources.
+A native (non-upjet) [Crossplane](https://crossplane.io/) 2.0 provider for the Philips DIP/HSDP platform, enabling declarative management of IAM, MDM, and Provisioning resources. API groups and kinds are compatible with the legacy upjet-based [provider-hsdp](https://github.com/philips-software/provider-hsdp).
 
 ## Overview
 
@@ -12,33 +12,33 @@ This provider uses the [go-dip-api](https://github.com/philips-software/go-dip-a
 
 | Resource | API Group | Kind |
 |----------|-----------|------|
-| Organization | iam.dip.m.crossplane.io | Organization |
-| Proposition | iam.dip.m.crossplane.io | Proposition |
-| Application | iam.dip.m.crossplane.io | Application |
-| Group | iam.dip.m.crossplane.io | Group |
-| Role | iam.dip.m.crossplane.io | Role |
-| Service | iam.dip.m.crossplane.io | Service |
-| Client | iam.dip.m.crossplane.io | Client |
-| User | iam.dip.m.crossplane.io | User |
-| EmailTemplate | iam.dip.m.crossplane.io | EmailTemplate |
-| PasswordPolicy | iam.dip.m.crossplane.io | PasswordPolicy |
+| Organization | iam.hsdp.m.crossplane.io | Organization |
+| Proposition | iam.hsdp.m.crossplane.io | Proposition |
+| Application | iam.hsdp.m.crossplane.io | Application |
+| Group | iam.hsdp.m.crossplane.io | Group |
+| Role | iam.hsdp.m.crossplane.io | Role |
+| Service | iam.hsdp.m.crossplane.io | Service |
+| Client | iam.hsdp.m.crossplane.io | Client |
+| User | iam.hsdp.m.crossplane.io | User |
+| EmailTemplate | iam.hsdp.m.crossplane.io | EmailTemplate |
+| PasswordPolicy | iam.hsdp.m.crossplane.io | PasswordPolicy |
 
 ### MDM (Master Data Management)
 
 | Resource | API Group | Kind |
 |----------|-----------|------|
-| Proposition | mdm.dip.m.crossplane.io | Proposition |
-| Application | mdm.dip.m.crossplane.io | Application |
-| StandardService | mdm.dip.m.crossplane.io | StandardService |
-| DeviceGroup | mdm.dip.m.crossplane.io | DeviceGroup |
-| DeviceType | mdm.dip.m.crossplane.io | DeviceType |
-| AuthenticationMethod | mdm.dip.m.crossplane.io | AuthenticationMethod |
+| Proposition | mdm.hsdp.m.crossplane.io | Proposition |
+| Application | mdm.hsdp.m.crossplane.io | Application |
+| StandardService | mdm.hsdp.m.crossplane.io | StandardService |
+| DeviceGroup | mdm.hsdp.m.crossplane.io | DeviceGroup |
+| DeviceType | mdm.hsdp.m.crossplane.io | DeviceType |
+| AuthenticationMethod | mdm.hsdp.m.crossplane.io | AuthenticationMethod |
 
 ### Provisioning
 
 | Resource | API Group | Kind |
 |----------|-----------|------|
-| OrgConfiguration | provisioning.dip.m.crossplane.io | OrgConfiguration |
+| OrgConfiguration | provisioning.hsdp.m.crossplane.io | OrgConfiguration |
 
 ## Installation
 
@@ -48,19 +48,40 @@ Install the provider using crossplane CLI or a DeploymentRuntimeConfig:
 apiVersion: pkg.crossplane.io/v1
 kind: Provider
 metadata:
-  name: provider-dip
+  name: provider-hsdp
 spec:
-  package: ghcr.io/loafoe/provider-dip:v0.3.0
+  package: ghcr.io/loafoe/provider-hsdp:v0.3.0
 ```
 
 ## Configuration
 
 ### ProviderConfig
 
-Create a ProviderConfig that references your DIP credentials:
+Most resources should reference a cluster-scoped `ClusterProviderConfig` (the
+default per the Crossplane v2 convention):
 
 ```yaml
-apiVersion: dip.m.crossplane.io/v1alpha1
+apiVersion: hsdp.crossplane.io/v1
+kind: ClusterProviderConfig
+metadata:
+  name: default
+spec:
+  region: us-east
+  environment: client-test
+  credentials:
+    source: Secret
+    secretRef:
+      name: dip-credentials
+      namespace: crossplane-system
+      key: credentials
+```
+
+A namespace-scoped `ProviderConfig` is also available to override credentials
+for a specific tenant/namespace; reference it explicitly via
+`providerConfigRef: {kind: ProviderConfig, name: <name>}`:
+
+```yaml
+apiVersion: hsdp.m.crossplane.io/v1
 kind: ProviderConfig
 metadata:
   name: default
@@ -102,7 +123,7 @@ The secret can optionally override `region` and `environment` from the ProviderC
 ### Organization
 
 ```yaml
-apiVersion: iam.dip.m.crossplane.io/v1alpha1
+apiVersion: iam.hsdp.m.crossplane.io/v1
 kind: Organization
 metadata:
   name: my-org
@@ -119,7 +140,7 @@ spec:
 ### Application
 
 ```yaml
-apiVersion: iam.dip.m.crossplane.io/v1alpha1
+apiVersion: iam.hsdp.m.crossplane.io/v1
 kind: Application
 metadata:
   name: my-app
@@ -137,7 +158,7 @@ spec:
 ### Client
 
 ```yaml
-apiVersion: iam.dip.m.crossplane.io/v1alpha1
+apiVersion: iam.hsdp.m.crossplane.io/v1
 kind: Client
 metadata:
   name: my-client
@@ -186,7 +207,7 @@ make run
 ### Build and push image
 
 ```shell
-make docker-build docker-push IMG=ghcr.io/loafoe/provider-dip:v0.3.0
+make docker-build docker-push IMG=ghcr.io/loafoe/provider-hsdp:v0.3.0
 ```
 
 ## License

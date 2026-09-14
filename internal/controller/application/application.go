@@ -29,14 +29,13 @@ import (
 	xpv1 "github.com/crossplane/crossplane/apis/v2/core/v2"
 	"github.com/philips-software/go-dip-api/iam"
 	"github.com/pkg/errors"
-	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	iamv1alpha1 "github.com/crossplane/provider-template/apis/iam/v1alpha1"
-	apisv1alpha1 "github.com/crossplane/provider-template/apis/v1alpha1"
-	"github.com/crossplane/provider-template/internal/clients/dip"
-	"github.com/crossplane/provider-template/internal/util"
+	iamv1 "github.com/loafoe/provider-hsdp/apis/iam/v1"
+	apismv1 "github.com/loafoe/provider-hsdp/apis/m/v1"
+	"github.com/loafoe/provider-hsdp/internal/clients/dip"
+	"github.com/loafoe/provider-hsdp/internal/util"
 )
 
 const (
@@ -49,12 +48,12 @@ const (
 
 // Setup adds a controller that reconciles Application managed resources.
 func Setup(mgr ctrl.Manager, o controller.Options) error {
-	name := managed.ControllerName(iamv1alpha1.ApplicationGroupKind)
+	name := managed.ControllerName(iamv1.ApplicationGroupKind)
 
 	opts := []managed.ReconcilerOption{
 		managed.WithExternalConnector(&connector{
 			kube:  mgr.GetClient(),
-			usage: resource.NewProviderConfigUsageTracker(mgr.GetClient(), &apisv1alpha1.ProviderConfigUsage{}),
+			usage: resource.NewProviderConfigUsageTracker(mgr.GetClient(), &apismv1.ProviderConfigUsage{}),
 		}),
 		managed.WithLogger(o.Logger.WithValues("controller", name)),
 		managed.WithPollInterval(o.PollInterval),
@@ -71,13 +70,13 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 	// cache before the real GUID is known.
 	opts = append(opts, managed.WithInitializers())
 
-	r := managed.NewReconciler(mgr, resource.ManagedKind(iamv1alpha1.ApplicationGroupVersionKind), opts...)
+	r := managed.NewReconciler(mgr, resource.ManagedKind(iamv1.ApplicationGroupVersionKind), opts...)
 
 	return ctrl.NewControllerManagedBy(mgr).
 		Named(name).
 		WithOptions(o.ForControllerRuntime()).
 		WithEventFilter(resource.DesiredStateChanged()).
-		For(&iamv1alpha1.Application{}).
+		For(&iamv1.Application{}).
 		Complete(ratelimiter.NewReconciler(name, r, o.GlobalRateLimiter))
 }
 
@@ -87,7 +86,7 @@ type connector struct {
 }
 
 func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.ExternalClient, error) {
-	cr, ok := mg.(*iamv1alpha1.Application)
+	cr, ok := mg.(*iamv1.Application)
 	if !ok {
 		return nil, errors.New(errNotApplication)
 	}
@@ -97,25 +96,24 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 	}
 
 	m := mg.(resource.ModernManaged)
-	ref := m.GetProviderConfigReference()
 
-	pc := &apisv1alpha1.ProviderConfig{}
-	if err := c.kube.Get(ctx, types.NamespacedName{Name: ref.Name, Namespace: m.GetNamespace()}, pc); err != nil {
+	pcSpec, pcKey, err := util.ResolveProviderConfig(ctx, c.kube, m)
+	if err != nil {
 		return nil, errors.Wrap(err, errGetPC)
 	}
 
-	secretData, err := resource.CommonCredentialExtractor(ctx, pc.Spec.Credentials.Source, c.kube,
-		xpv1.CommonCredentialSelectors{SecretRef: pc.Spec.Credentials.SecretRef})
+	secretData, err := resource.CommonCredentialExtractor(ctx, pcSpec.Credentials.Source, c.kube,
+		xpv1.CommonCredentialSelectors{SecretRef: pcSpec.Credentials.SecretRef})
 	if err != nil {
 		return nil, errors.Wrap(err, errGetCreds)
 	}
 
-	cfg, err := dip.ConfigFromSecret(pc.Spec.Region, pc.Spec.Environment, secretData)
+	cfg, err := dip.ConfigFromSecret(pcSpec.Region, pcSpec.Environment, secretData)
 	if err != nil {
 		return nil, errors.Wrap(err, errGetCreds)
 	}
 
-	dipClient, err := dip.NewClient(cfg)
+	dipClient, err := dip.Cache.Get(pcKey, cfg)
 	if err != nil {
 		return nil, errors.Wrap(err, errNewClient)
 	}
@@ -128,7 +126,7 @@ type external struct {
 }
 
 func (e *external) Observe(ctx context.Context, mg resource.Managed) (managed.ExternalObservation, error) {
-	cr, ok := mg.(*iamv1alpha1.Application)
+	cr, ok := mg.(*iamv1.Application)
 	if !ok {
 		return managed.ExternalObservation{}, errors.New(errNotApplication)
 	}
@@ -154,6 +152,8 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 	}
 
 	cr.Status.AtProvider.ID = &app.ID
+	cr.Status.AtProvider.Description = util.StringPtrOrNil(app.Description)
+	cr.Status.AtProvider.GlobalReferenceID = util.StringPtrOrNil(app.GlobalReferenceID)
 
 	cr.Status.SetConditions(xpv1.Available())
 
@@ -163,7 +163,7 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 	}, nil
 }
 
-func (e *external) isUpToDate(cr *iamv1alpha1.Application, app *iam.Application) bool {
+func (e *external) isUpToDate(cr *iamv1.Application, app *iam.Application) bool {
 	fp := cr.Spec.ForProvider
 
 	if fp.Name != app.Name {
@@ -176,7 +176,7 @@ func (e *external) isUpToDate(cr *iamv1alpha1.Application, app *iam.Application)
 }
 
 func (e *external) Create(ctx context.Context, mg resource.Managed) (managed.ExternalCreation, error) {
-	cr, ok := mg.(*iamv1alpha1.Application)
+	cr, ok := mg.(*iamv1.Application)
 	if !ok {
 		return managed.ExternalCreation{}, errors.New(errNotApplication)
 	}
@@ -208,7 +208,7 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 }
 
 func (e *external) Update(ctx context.Context, mg resource.Managed) (managed.ExternalUpdate, error) {
-	cr, ok := mg.(*iamv1alpha1.Application)
+	cr, ok := mg.(*iamv1.Application)
 	if !ok {
 		return managed.ExternalUpdate{}, errors.New(errNotApplication)
 	}
@@ -221,7 +221,7 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 }
 
 func (e *external) Delete(ctx context.Context, mg resource.Managed) (managed.ExternalDelete, error) {
-	cr, ok := mg.(*iamv1alpha1.Application)
+	cr, ok := mg.(*iamv1.Application)
 	if !ok {
 		return managed.ExternalDelete{}, errors.New(errNotApplication)
 	}

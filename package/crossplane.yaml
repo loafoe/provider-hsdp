@@ -1,13 +1,14 @@
 apiVersion: meta.pkg.crossplane.io/v1alpha1
 kind: Provider
 metadata:
-  name: provider-template
+  name: provider-hsdp
   annotations:
-    meta.crossplane.io/maintainer: Crossplane Maintainers <info@crossplane.io>
-    meta.crossplane.io/source: github.com/crossplane/provider-template
+    meta.crossplane.io/maintainer: Andy Lo-A-Foe <andy.loafoe@gmail.com>
+    meta.crossplane.io/source: github.com/loafoe/provider-hsdp
     meta.crossplane.io/license: Apache-2.0
     meta.crossplane.io/description: |
-      A template that can be used to create Crossplane providers.
+      A native (non-upjet) Crossplane provider for the Philips DIP/HSDP
+      platform, compatible with the legacy upjet-based provider-hsdp.
 spec:
   capabilities:
     - safe-start

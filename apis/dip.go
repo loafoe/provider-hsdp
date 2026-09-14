@@ -20,18 +20,20 @@ package apis
 import (
 	"k8s.io/apimachinery/pkg/runtime"
 
-	iamv1alpha1 "github.com/crossplane/provider-template/apis/iam/v1alpha1"
-	mdmv1alpha1 "github.com/crossplane/provider-template/apis/mdm/v1alpha1"
-	provisioningv1alpha1 "github.com/crossplane/provider-template/apis/provisioning/v1alpha1"
-	dipv1alpha1 "github.com/crossplane/provider-template/apis/v1alpha1"
+	iamv1 "github.com/loafoe/provider-hsdp/apis/iam/v1"
+	dipmv1 "github.com/loafoe/provider-hsdp/apis/m/v1"
+	mdmv1 "github.com/loafoe/provider-hsdp/apis/mdm/v1"
+	provisioningv1 "github.com/loafoe/provider-hsdp/apis/provisioning/v1"
+	dipv1 "github.com/loafoe/provider-hsdp/apis/v1"
 )
 
 func init() {
 	AddToSchemes = append(AddToSchemes,
-		dipv1alpha1.SchemeBuilder.AddToScheme,
-		iamv1alpha1.SchemeBuilder.AddToScheme,
-		mdmv1alpha1.SchemeBuilder.AddToScheme,
-		provisioningv1alpha1.SchemeBuilder.AddToScheme,
+		dipv1.SchemeBuilder.AddToScheme,
+		dipmv1.SchemeBuilder.AddToScheme,
+		iamv1.SchemeBuilder.AddToScheme,
+		mdmv1.SchemeBuilder.AddToScheme,
+		provisioningv1.SchemeBuilder.AddToScheme,
 	)
 }
 

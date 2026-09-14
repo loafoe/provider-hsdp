@@ -118,7 +118,7 @@ formatters:
       simplify: true
     goimports:
       local-prefixes:
-        - github.com/crossplane/provider-template
+        - github.com/loafoe/provider-hsdp
   exclusions:
     generated: lax
     paths:

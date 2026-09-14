@@ -1,4 +1,4 @@
-apiVersion: iam.dip.m.crossplane.io/v1alpha1
+apiVersion: iam.hsdp.m.crossplane.io/v1
 kind: Service
 metadata:
   name: example-service

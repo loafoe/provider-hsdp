@@ -6,7 +6,7 @@
 # The Service writes its generated credentials (serviceId + privateKey) to the
 # Secret named in writeConnectionSecretToRef.
 ---
-apiVersion: iam.dip.m.crossplane.io/v1alpha1
+apiVersion: iam.hsdp.m.crossplane.io/v1
 kind: Proposition
 metadata:
   name: dipccproposition
@@ -22,7 +22,7 @@ spec:
     organizationRef:
       name: dipccorg
 ---
-apiVersion: iam.dip.m.crossplane.io/v1alpha1
+apiVersion: iam.hsdp.m.crossplane.io/v1
 kind: Application
 metadata:
   name: dipccapplication
@@ -38,7 +38,7 @@ spec:
     propositionRef:
       name: dipccproposition
 ---
-apiVersion: iam.dip.m.crossplane.io/v1alpha1
+apiVersion: iam.hsdp.m.crossplane.io/v1
 kind: Service
 metadata:
   name: dipccservice

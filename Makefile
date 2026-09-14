@@ -1,7 +1,7 @@
 # ====================================================================================
 # Setup Project
-PROJECT_NAME := provider-template
-PROJECT_REPO := github.com/crossplane/$(PROJECT_NAME)
+PROJECT_NAME := provider-hsdp
+PROJECT_REPO := github.com/loafoe/$(PROJECT_NAME)
 
 PLATFORMS ?= linux_amd64 linux_arm64
 -include build/makelib/common.mk
@@ -31,7 +31,7 @@ GOLANGCILINT_VERSION = 2.12.1
 # ====================================================================================
 # Setup Images
 
-IMAGES = provider-template
+IMAGES = provider-hsdp
 -include build/makelib/imagelight.mk
 
 # ====================================================================================
@@ -41,12 +41,12 @@ XPKG_REG_ORGS ?= xpkg.upbound.io/crossplane
 # NOTE(hasheddan): skip promoting on xpkg.upbound.io as channel tags are
 # inferred.
 XPKG_REG_ORGS_NO_PROMOTE ?= xpkg.upbound.io/crossplane
-XPKGS = provider-template
+XPKGS = provider-hsdp
 -include build/makelib/xpkg.mk
 
 # NOTE(hasheddan): we force image building to happen prior to xpkg build so that
 # we ensure image is present in daemon.
-xpkg.build.provider-template: do.build.images
+xpkg.build.provider-hsdp: do.build.images
 
 fallthrough: submodules
 	@echo Initial setup complete. Running make again . . .

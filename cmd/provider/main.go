@@ -29,6 +29,7 @@ import (
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
+	ctrlconfig "sigs.k8s.io/controller-runtime/pkg/config"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics"
 
@@ -88,6 +89,15 @@ func main() {
 		// The recommended way is to move it to cache.Options instead
 		Cache: cache.Options{
 			SyncPeriod: syncInterval,
+		},
+
+		// The crd-gate controller (used for safe-start) lists and watches
+		// every CustomResourceDefinition in the cluster. controller-runtime's
+		// default 2 minute CacheSyncTimeout is too tight on clusters with a
+		// large number of CRDs, causing the provider to crash-loop on
+		// startup before its cache ever finishes syncing.
+		Controller: ctrlconfig.Controller{
+			CacheSyncTimeout: 10 * time.Minute,
 		},
 
 		// controller-runtime uses both ConfigMaps and Leases for leader

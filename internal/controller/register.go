@@ -23,7 +23,6 @@ import (
 	"github.com/loafoe/provider-hsdp/internal/controller/application"
 	"github.com/loafoe/provider-hsdp/internal/controller/client"
 	"github.com/loafoe/provider-hsdp/internal/controller/config"
-	"github.com/loafoe/provider-hsdp/internal/controller/device"
 	"github.com/loafoe/provider-hsdp/internal/controller/emailtemplate"
 	"github.com/loafoe/provider-hsdp/internal/controller/group"
 	mdmapplication "github.com/loafoe/provider-hsdp/internal/controller/mdm/application"
@@ -50,7 +49,6 @@ func SetupGated(mgr ctrl.Manager, o controller.Options) error {
 		organization.Setup,
 		group.Setup,
 		role.Setup,
-		device.Setup,
 		proposition.Setup,
 		application.Setup,
 		client.Setup,

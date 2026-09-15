@@ -160,24 +160,6 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 	}
 	cr.Status.AtProvider.AssignedRoleIDs = assignedRoleIDs
 
-	assignedUserIDs, err := e.assignedMemberIDs(externalName, "User")
-	if err != nil {
-		return managed.ExternalObservation{}, errors.Wrap(err, "cannot get users assigned to group")
-	}
-	cr.Status.AtProvider.AssignedUserIDs = assignedUserIDs
-
-	assignedServiceIDs, err := e.assignedMemberIDs(externalName, "Service")
-	if err != nil {
-		return managed.ExternalObservation{}, errors.Wrap(err, "cannot get services assigned to group")
-	}
-	cr.Status.AtProvider.AssignedServiceIDs = assignedServiceIDs
-
-	assignedDeviceIDs, err := e.assignedMemberIDs(externalName, "Device")
-	if err != nil {
-		return managed.ExternalObservation{}, errors.Wrap(err, "cannot get devices assigned to group")
-	}
-	cr.Status.AtProvider.AssignedDeviceIDs = assignedDeviceIDs
-
 	cr.Status.SetConditions(xpv1.Available())
 
 	return managed.ExternalObservation{
@@ -203,27 +185,6 @@ func (e *external) assignedRoleIDs(group iam.Group) ([]string, error) {
 	return ids, nil
 }
 
-// assignedMemberIDs returns the GUIDs of the members of the given type
-// (e.g. "User", "Service", "Device") currently in the group with the given
-// external name, as observed from DIP via the SCIM API.
-func (e *external) assignedMemberIDs(externalName, memberType string) ([]string, error) {
-	scimGroup, _, err := e.client.IAM.Groups.SCIMGetGroupByID(externalName, &iam.SCIMGetGroupOptions{
-		IncludeGroupMembersType: &memberType,
-	})
-	if err != nil {
-		return nil, err
-	}
-	if scimGroup == nil {
-		return nil, nil
-	}
-	resources := scimGroup.ExtensionGroup.GroupMembers.Resources
-	ids := make([]string, 0, len(resources))
-	for _, resource := range resources {
-		ids = append(ids, resource.ID)
-	}
-	return ids, nil
-}
-
 func (e *external) isUpToDate(cr *iamv1.Group, group *iam.Group) bool {
 	fp := cr.Spec.ForProvider
 
@@ -234,15 +195,6 @@ func (e *external) isUpToDate(cr *iamv1.Group, group *iam.Group) bool {
 		return false
 	}
 	if !sameIDs(fp.RoleIDs, cr.Status.AtProvider.AssignedRoleIDs) {
-		return false
-	}
-	if !sameIDs(fp.UserIDs, cr.Status.AtProvider.AssignedUserIDs) {
-		return false
-	}
-	if !sameIDs(fp.ServiceIDs, cr.Status.AtProvider.AssignedServiceIDs) {
-		return false
-	}
-	if !sameIDs(fp.DeviceIDs, cr.Status.AtProvider.AssignedDeviceIDs) {
 		return false
 	}
 	return true
@@ -310,42 +262,6 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 	for _, roleID := range toRemove {
 		if _, _, err := e.client.IAM.Groups.RemoveRole(ctx, group, iam.Role{ID: roleID}); err != nil {
 			return managed.ExternalUpdate{}, errors.Wrapf(err, "cannot remove role %s from group", roleID)
-		}
-	}
-
-	toAddUsers, toRemoveUsers := diffIDs(fp.UserIDs, cr.Status.AtProvider.AssignedUserIDs)
-	if len(toAddUsers) > 0 {
-		if _, _, err := e.client.IAM.Groups.AddMembers(ctx, group, toAddUsers...); err != nil {
-			return managed.ExternalUpdate{}, errors.Wrap(err, "cannot add members to group")
-		}
-	}
-	if len(toRemoveUsers) > 0 {
-		if _, _, err := e.client.IAM.Groups.RemoveMembers(ctx, group, toRemoveUsers...); err != nil {
-			return managed.ExternalUpdate{}, errors.Wrap(err, "cannot remove members from group")
-		}
-	}
-
-	toAddServices, toRemoveServices := diffIDs(fp.ServiceIDs, cr.Status.AtProvider.AssignedServiceIDs)
-	if len(toAddServices) > 0 {
-		if _, _, err := e.client.IAM.Groups.AddServices(ctx, group, toAddServices...); err != nil {
-			return managed.ExternalUpdate{}, errors.Wrap(err, "cannot add services to group")
-		}
-	}
-	if len(toRemoveServices) > 0 {
-		if _, _, err := e.client.IAM.Groups.RemoveServices(ctx, group, toRemoveServices...); err != nil {
-			return managed.ExternalUpdate{}, errors.Wrap(err, "cannot remove services from group")
-		}
-	}
-
-	toAddDevices, toRemoveDevices := diffIDs(fp.DeviceIDs, cr.Status.AtProvider.AssignedDeviceIDs)
-	if len(toAddDevices) > 0 {
-		if _, _, err := e.client.IAM.Groups.AddDevices(ctx, group, toAddDevices...); err != nil {
-			return managed.ExternalUpdate{}, errors.Wrap(err, "cannot add devices to group")
-		}
-	}
-	if len(toRemoveDevices) > 0 {
-		if _, _, err := e.client.IAM.Groups.RemoveDevices(ctx, group, toRemoveDevices...); err != nil {
-			return managed.ExternalUpdate{}, errors.Wrap(err, "cannot remove devices from group")
 		}
 	}
 

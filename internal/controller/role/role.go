@@ -154,33 +154,12 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 	cr.Status.AtProvider.ID = &role.ID
 	cr.Status.AtProvider.Description = util.StringPtrOrNil(role.Description)
 
-	sharingPolicies, _, err := e.client.IAM.Roles.ListSharingPolicies(*role, nil)
-	if err != nil {
-		return managed.ExternalObservation{}, errors.Wrap(err, "cannot list role sharing policies")
-	}
-	cr.Status.AtProvider.SharingPolicies = toSharingPolicyStatuses(sharingPolicies)
-
 	cr.Status.SetConditions(xpv1.Available())
 
 	return managed.ExternalObservation{
 		ResourceExists:   true,
 		ResourceUpToDate: e.isUpToDate(cr, role),
 	}, nil
-}
-
-func toSharingPolicyStatuses(policies *[]iam.RoleSharingPolicy) []iamv1.RoleSharingPolicyStatus {
-	if policies == nil {
-		return nil
-	}
-	out := make([]iamv1.RoleSharingPolicyStatus, 0, len(*policies))
-	for _, p := range *policies {
-		out = append(out, iamv1.RoleSharingPolicyStatus{
-			TargetOrganizationID: p.TargetOrganizationID,
-			SharingPolicy:        p.SharingPolicy,
-			Purpose:              p.Purpose,
-		})
-	}
-	return out
 }
 
 func (e *external) isUpToDate(cr *iamv1.Role, role *iam.Role) bool {
@@ -194,9 +173,6 @@ func (e *external) isUpToDate(cr *iamv1.Role, role *iam.Role) bool {
 	}
 	// Note: Permissions are managed separately via the Roles API
 	// We're not checking them here for simplicity
-	if !sharingPoliciesUpToDate(fp.SharingPolicies, cr.Status.AtProvider.SharingPolicies) {
-		return false
-	}
 	return true
 }
 
@@ -239,32 +215,7 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 	// Note: The DIP API doesn't support updating roles directly
 	// Only description can be changed, and permissions are managed separately
 	// This is a limitation of the IAM API
-
-	role := iam.Role{ID: meta.GetExternalName(cr)}
-
-	toApply, toRemove := diffSharingPolicies(cr.Spec.ForProvider.SharingPolicies, cr.Status.AtProvider.SharingPolicies)
-	for _, p := range toApply {
-		policy := iam.RoleSharingPolicy{SharingPolicy: p.SharingPolicy}
-		if p.TargetOrganizationID != nil {
-			policy.TargetOrganizationID = *p.TargetOrganizationID
-		}
-		if p.Purpose != nil {
-			policy.Purpose = *p.Purpose
-		}
-		if _, _, err := e.client.IAM.Roles.ApplySharingPolicy(role, policy); err != nil {
-			return managed.ExternalUpdate{}, errors.Wrapf(err, "cannot apply sharing policy for organization %s", policy.TargetOrganizationID)
-		}
-	}
-	for _, p := range toRemove {
-		policy := iam.RoleSharingPolicy{
-			TargetOrganizationID: p.TargetOrganizationID,
-			SharingPolicy:        p.SharingPolicy,
-			Purpose:              p.Purpose,
-		}
-		if _, _, err := e.client.IAM.Roles.RemoveSharingPolicy(role, policy); err != nil {
-			return managed.ExternalUpdate{}, errors.Wrapf(err, "cannot remove sharing policy for organization %s", policy.TargetOrganizationID)
-		}
-	}
+	_ = cr
 
 	return managed.ExternalUpdate{}, nil
 }

@@ -54,51 +54,6 @@ type RoleParameters struct {
 	// Permissions is the list of permission names assigned to this role.
 	// +optional
 	Permissions []string `json:"permissions,omitempty"`
-
-	// SharingPolicies share this role with other Organizations.
-	// +optional
-	SharingPolicies []RoleSharingPolicyParameters `json:"sharingPolicies,omitempty"`
-}
-
-// RoleSharingPolicyParameters describe a sharing policy that grants this
-// role to another Organization.
-type RoleSharingPolicyParameters struct {
-	// TargetOrganizationID is the GUID of the Organization to share this
-	// role with.
-	// +optional
-	// +crossplane:generate:reference:type=Organization
-	// +crossplane:generate:reference:refFieldName=TargetOrganizationRef
-	// +crossplane:generate:reference:selectorFieldName=TargetOrganizationSelector
-	TargetOrganizationID *string `json:"targetOrganizationId,omitempty"`
-
-	// TargetOrganizationRef references the target Organization.
-	// +optional
-	TargetOrganizationRef *xpv1.NamespacedReference `json:"targetOrganizationRef,omitempty"`
-
-	// TargetOrganizationSelector selects the target Organization.
-	// +optional
-	TargetOrganizationSelector *xpv1.NamespacedSelector `json:"targetOrganizationSelector,omitempty"`
-
-	// SharingPolicy is the sharing mode, e.g. "ALL_USERS".
-	// +kubebuilder:validation:Required
-	SharingPolicy string `json:"sharingPolicy"`
-
-	// Purpose describes why this role is being shared.
-	// +optional
-	Purpose *string `json:"purpose,omitempty"`
-}
-
-// RoleSharingPolicyStatus is the observed state of a RoleSharingPolicy.
-type RoleSharingPolicyStatus struct {
-	// TargetOrganizationID is the GUID of the Organization this role is
-	// shared with.
-	TargetOrganizationID string `json:"targetOrganizationId,omitempty"`
-
-	// SharingPolicy is the sharing mode currently in effect.
-	SharingPolicy string `json:"sharingPolicy,omitempty"`
-
-	// Purpose as returned by DIP.
-	Purpose string `json:"purpose,omitempty"`
 }
 
 // RoleObservation are the observable fields of a Role.
@@ -108,10 +63,6 @@ type RoleObservation struct {
 
 	// Description as returned by DIP.
 	Description *string `json:"description,omitempty"`
-
-	// SharingPolicies are the sharing policies currently in effect for this
-	// role, as observed from DIP.
-	SharingPolicies []RoleSharingPolicyStatus `json:"sharingPolicies,omitempty"`
 }
 
 // RoleSpec defines the desired state of a Role.

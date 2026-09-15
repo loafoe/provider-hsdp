@@ -65,53 +65,6 @@ type GroupParameters struct {
 	// RoleSelector selects the Roles assigned to this group.
 	// +optional
 	RoleSelector *xpv1.NamespacedSelector `json:"roleSelector,omitempty"`
-
-	// UserIDs are the GUIDs of the Users that are members of this group.
-	// +optional
-	// +crossplane:generate:reference:type=User
-	// +crossplane:generate:reference:refFieldName=UserRefs
-	// +crossplane:generate:reference:selectorFieldName=UserSelector
-	UserIDs []string `json:"userIds,omitempty"`
-
-	// UserRefs reference the Users that are members of this group.
-	// +optional
-	UserRefs []xpv1.NamespacedReference `json:"userRefs,omitempty"`
-
-	// UserSelector selects the Users that are members of this group.
-	// +optional
-	UserSelector *xpv1.NamespacedSelector `json:"userSelector,omitempty"`
-
-	// ServiceIDs are the GUIDs of the Services that are members of this
-	// group.
-	// +optional
-	// +crossplane:generate:reference:type=Service
-	// +crossplane:generate:reference:refFieldName=ServiceRefs
-	// +crossplane:generate:reference:selectorFieldName=ServiceSelector
-	ServiceIDs []string `json:"serviceIds,omitempty"`
-
-	// ServiceRefs reference the Services that are members of this group.
-	// +optional
-	ServiceRefs []xpv1.NamespacedReference `json:"serviceRefs,omitempty"`
-
-	// ServiceSelector selects the Services that are members of this group.
-	// +optional
-	ServiceSelector *xpv1.NamespacedSelector `json:"serviceSelector,omitempty"`
-
-	// DeviceIDs are the GUIDs of the Devices that are members of this
-	// group.
-	// +optional
-	// +crossplane:generate:reference:type=Device
-	// +crossplane:generate:reference:refFieldName=DeviceRefs
-	// +crossplane:generate:reference:selectorFieldName=DeviceSelector
-	DeviceIDs []string `json:"deviceIds,omitempty"`
-
-	// DeviceRefs reference the Devices that are members of this group.
-	// +optional
-	DeviceRefs []xpv1.NamespacedReference `json:"deviceRefs,omitempty"`
-
-	// DeviceSelector selects the Devices that are members of this group.
-	// +optional
-	DeviceSelector *xpv1.NamespacedSelector `json:"deviceSelector,omitempty"`
 }
 
 // GroupObservation are the observable fields of a Group.
@@ -125,18 +78,6 @@ type GroupObservation struct {
 	// AssignedRoleIDs are the GUIDs of the Roles currently assigned to this
 	// group, as observed from DIP.
 	AssignedRoleIDs []string `json:"assignedRoleIds,omitempty"`
-
-	// AssignedUserIDs are the GUIDs of the Users that are currently members
-	// of this group, as observed from DIP.
-	AssignedUserIDs []string `json:"assignedUserIds,omitempty"`
-
-	// AssignedServiceIDs are the GUIDs of the Services that are currently
-	// members of this group, as observed from DIP.
-	AssignedServiceIDs []string `json:"assignedServiceIds,omitempty"`
-
-	// AssignedDeviceIDs are the GUIDs of the Devices that are currently
-	// members of this group, as observed from DIP.
-	AssignedDeviceIDs []string `json:"assignedDeviceIds,omitempty"`
 }
 
 // GroupSpec defines the desired state of a Group.

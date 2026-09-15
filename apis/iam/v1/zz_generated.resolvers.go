@@ -148,101 +148,6 @@ func (mg *Group) ResolveReferences(ctx context.Context, c client.Reader) error {
 	mg.Spec.ForProvider.RoleIDs = mrsp.ResolvedValues
 	mg.Spec.ForProvider.RoleRefs = mrsp.ResolvedReferences
 
-	mrsp, err = r.ResolveMultiple(ctx, reference.MultiNamespacedResolutionRequest{
-		CurrentValues: mg.Spec.ForProvider.UserIDs,
-		Extract:       reference.ExternalName(),
-		Namespace:     mg.GetNamespace(),
-		References:    mg.Spec.ForProvider.UserRefs,
-		Selector:      mg.Spec.ForProvider.UserSelector,
-		To: reference.To{
-			List:    &UserList{},
-			Managed: &User{},
-		},
-	})
-	if err != nil {
-		return errors.Wrap(err, "mg.Spec.ForProvider.UserIDs")
-	}
-	mg.Spec.ForProvider.UserIDs = mrsp.ResolvedValues
-	mg.Spec.ForProvider.UserRefs = mrsp.ResolvedReferences
-
-	mrsp, err = r.ResolveMultiple(ctx, reference.MultiNamespacedResolutionRequest{
-		CurrentValues: mg.Spec.ForProvider.ServiceIDs,
-		Extract:       reference.ExternalName(),
-		Namespace:     mg.GetNamespace(),
-		References:    mg.Spec.ForProvider.ServiceRefs,
-		Selector:      mg.Spec.ForProvider.ServiceSelector,
-		To: reference.To{
-			List:    &ServiceList{},
-			Managed: &Service{},
-		},
-	})
-	if err != nil {
-		return errors.Wrap(err, "mg.Spec.ForProvider.ServiceIDs")
-	}
-	mg.Spec.ForProvider.ServiceIDs = mrsp.ResolvedValues
-	mg.Spec.ForProvider.ServiceRefs = mrsp.ResolvedReferences
-
-	mrsp, err = r.ResolveMultiple(ctx, reference.MultiNamespacedResolutionRequest{
-		CurrentValues: mg.Spec.ForProvider.DeviceIDs,
-		Extract:       reference.ExternalName(),
-		Namespace:     mg.GetNamespace(),
-		References:    mg.Spec.ForProvider.DeviceRefs,
-		Selector:      mg.Spec.ForProvider.DeviceSelector,
-		To: reference.To{
-			List:    &DeviceList{},
-			Managed: &Device{},
-		},
-	})
-	if err != nil {
-		return errors.Wrap(err, "mg.Spec.ForProvider.DeviceIDs")
-	}
-	mg.Spec.ForProvider.DeviceIDs = mrsp.ResolvedValues
-	mg.Spec.ForProvider.DeviceRefs = mrsp.ResolvedReferences
-
-	return nil
-}
-
-// ResolveReferences of this Device.
-func (mg *Device) ResolveReferences(ctx context.Context, c client.Reader) error {
-	r := reference.NewAPINamespacedResolver(c, mg)
-
-	var rsp reference.NamespacedResolutionResponse
-	var err error
-
-	rsp, err = r.Resolve(ctx, reference.NamespacedResolutionRequest{
-		CurrentValue: reference.FromPtrValue(mg.Spec.ForProvider.OrganizationID),
-		Extract:      reference.ExternalName(),
-		Namespace:    mg.GetNamespace(),
-		Reference:    mg.Spec.ForProvider.OrganizationRef,
-		Selector:     mg.Spec.ForProvider.OrganizationSelector,
-		To: reference.To{
-			List:    &OrganizationList{},
-			Managed: &Organization{},
-		},
-	})
-	if err != nil {
-		return errors.Wrap(err, "mg.Spec.ForProvider.OrganizationID")
-	}
-	mg.Spec.ForProvider.OrganizationID = reference.ToPtrValue(rsp.ResolvedValue)
-	mg.Spec.ForProvider.OrganizationRef = rsp.ResolvedReference
-
-	rsp, err = r.Resolve(ctx, reference.NamespacedResolutionRequest{
-		CurrentValue: reference.FromPtrValue(mg.Spec.ForProvider.ApplicationID),
-		Extract:      reference.ExternalName(),
-		Namespace:    mg.GetNamespace(),
-		Reference:    mg.Spec.ForProvider.ApplicationRef,
-		Selector:     mg.Spec.ForProvider.ApplicationSelector,
-		To: reference.To{
-			List:    &ApplicationList{},
-			Managed: &Application{},
-		},
-	})
-	if err != nil {
-		return errors.Wrap(err, "mg.Spec.ForProvider.ApplicationID")
-	}
-	mg.Spec.ForProvider.ApplicationID = reference.ToPtrValue(rsp.ResolvedValue)
-	mg.Spec.ForProvider.ApplicationRef = rsp.ResolvedReference
-
 	return nil
 }
 
@@ -350,29 +255,6 @@ func (mg *Role) ResolveReferences(ctx context.Context, c client.Reader) error {
 	}
 	mg.Spec.ForProvider.ManagingOrganizationID = reference.ToPtrValue(rsp.ResolvedValue)
 	mg.Spec.ForProvider.ManagingOrganizationRef = rsp.ResolvedReference
-
-	// SharingPolicies is a slice of structs, each with its own independent
-	// TargetOrganizationRef, so resolve each entry individually rather than
-	// via ResolveMultiple (which resolves one field against one list of
-	// refs, not N independent single refs).
-	for i := range mg.Spec.ForProvider.SharingPolicies {
-		rsp, err = r.Resolve(ctx, reference.NamespacedResolutionRequest{
-			CurrentValue: reference.FromPtrValue(mg.Spec.ForProvider.SharingPolicies[i].TargetOrganizationID),
-			Extract:      reference.ExternalName(),
-			Namespace:    mg.GetNamespace(),
-			Reference:    mg.Spec.ForProvider.SharingPolicies[i].TargetOrganizationRef,
-			Selector:     mg.Spec.ForProvider.SharingPolicies[i].TargetOrganizationSelector,
-			To: reference.To{
-				List:    &OrganizationList{},
-				Managed: &Organization{},
-			},
-		})
-		if err != nil {
-			return errors.Wrapf(err, "mg.Spec.ForProvider.SharingPolicies[%d].TargetOrganizationID", i)
-		}
-		mg.Spec.ForProvider.SharingPolicies[i].TargetOrganizationID = reference.ToPtrValue(rsp.ResolvedValue)
-		mg.Spec.ForProvider.SharingPolicies[i].TargetOrganizationRef = rsp.ResolvedReference
-	}
 
 	return nil
 }

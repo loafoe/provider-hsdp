@@ -14,10 +14,3 @@ spec:
     permissions:
       - PERMISSION_READ
       - PERMISSION_WRITE
-    # sharingPolicies share this role's permissions with other
-    # Organizations.
-    sharingPolicies:
-      - targetOrganizationRef:
-          name: example-other-org
-        sharingPolicy: ALL_USERS
-        purpose: Cross-organization reporting access

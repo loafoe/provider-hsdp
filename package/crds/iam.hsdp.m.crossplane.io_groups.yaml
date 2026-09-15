@@ -430,6 +430,17 @@ spec:
                     items:
                       type: string
                     type: array
+                  userLogins:
+                    description: |-
+                      UserLogins are the login IDs (e.g. usernames or email addresses) of
+                      Users that are members of this group. Unlike UserIDs/UserRefs, these
+                      don't require a corresponding User managed resource to exist - each
+                      login is resolved to a GUID directly against DIP on every reconcile.
+                      Useful for adding existing HSDP users you don't want Crossplane to own
+                      the lifecycle of.
+                    items:
+                      type: string
+                    type: array
                   userRefs:
                     description: UserRefs reference the Users that are members of
                       this group.

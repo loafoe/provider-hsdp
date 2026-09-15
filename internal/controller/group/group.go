@@ -158,11 +158,16 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 		return managed.ExternalObservation{}, err
 	}
 
+	desiredUserIDs, err := e.desiredUserIDs(ctx, cr.Spec.ForProvider)
+	if err != nil {
+		return managed.ExternalObservation{}, errors.Wrap(err, "cannot resolve desired group members")
+	}
+
 	cr.Status.SetConditions(xpv1.Available())
 
 	return managed.ExternalObservation{
 		ResourceExists:   true,
-		ResourceUpToDate: e.isUpToDate(cr, group),
+		ResourceUpToDate: e.isUpToDate(cr, group, desiredUserIDs),
 	}, nil
 }
 
@@ -235,7 +240,40 @@ func (e *external) assignedMemberIDs(externalName, memberType string) ([]string,
 	return ids, nil
 }
 
-func (e *external) isUpToDate(cr *iamv1.Group, group *iam.Group) bool {
+// desiredUserIDs returns the full set of User GUIDs that should be members
+// of the group: those resolved via userRefs/userSelector into UserIDs, plus
+// those resolved live from userLogins.
+func (e *external) desiredUserIDs(ctx context.Context, fp iamv1.GroupParameters) ([]string, error) {
+	ids := desiredIDs(fp.UserIDs, fp.UserRefs, fp.UserSelector)
+	if len(fp.UserLogins) == 0 {
+		return ids, nil
+	}
+	loginIDs, err := e.resolveUserLogins(ctx, fp.UserLogins)
+	if err != nil {
+		return nil, err
+	}
+	return append(ids, loginIDs...), nil
+}
+
+// resolveUserLogins resolves each of the given DIP login IDs to a User GUID.
+func (e *external) resolveUserLogins(ctx context.Context, logins []string) ([]string, error) {
+	ids := make([]string, 0, len(logins))
+	for _, login := range logins {
+		var id string
+		if err := retryTransient(ctx, func() (*iam.Response, error) {
+			var resp *iam.Response
+			var err error
+			id, resp, err = e.client.IAM.Users.GetUserIDByLoginID(login)
+			return resp, err
+		}); err != nil {
+			return nil, errors.Wrapf(err, "cannot resolve user login %q", login)
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
+}
+
+func (e *external) isUpToDate(cr *iamv1.Group, group *iam.Group, desiredUserIDs []string) bool {
 	fp := cr.Spec.ForProvider
 
 	if fp.Name != group.Name {
@@ -247,7 +285,7 @@ func (e *external) isUpToDate(cr *iamv1.Group, group *iam.Group) bool {
 	if !sameIDs(desiredIDs(fp.RoleIDs, fp.RoleRefs, fp.RoleSelector), cr.Status.AtProvider.AssignedRoleIDs) {
 		return false
 	}
-	if !sameIDs(desiredIDs(fp.UserIDs, fp.UserRefs, fp.UserSelector), cr.Status.AtProvider.AssignedUserIDs) {
+	if !sameIDs(desiredUserIDs, cr.Status.AtProvider.AssignedUserIDs) {
 		return false
 	}
 	if !sameIDs(desiredIDs(fp.ServiceIDs, fp.ServiceRefs, fp.ServiceSelector), cr.Status.AtProvider.AssignedServiceIDs) {
@@ -317,7 +355,11 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 		return managed.ExternalUpdate{}, err
 	}
 
-	toAddUsers, toRemoveUsers := diffIDs(desiredIDs(fp.UserIDs, fp.UserRefs, fp.UserSelector), cr.Status.AtProvider.AssignedUserIDs)
+	desiredUserIDs, err := e.desiredUserIDs(ctx, fp)
+	if err != nil {
+		return managed.ExternalUpdate{}, errors.Wrap(err, "cannot resolve desired group members")
+	}
+	toAddUsers, toRemoveUsers := diffIDs(desiredUserIDs, cr.Status.AtProvider.AssignedUserIDs)
 	if err := e.reconcileMembers(ctx, group, toAddUsers, toRemoveUsers,
 		e.client.IAM.Groups.AddMembers, e.client.IAM.Groups.RemoveMembers, "members"); err != nil {
 		return managed.ExternalUpdate{}, err

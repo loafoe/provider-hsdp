@@ -81,6 +81,15 @@ type GroupParameters struct {
 	// +optional
 	UserSelector *xpv1.NamespacedSelector `json:"userSelector,omitempty"`
 
+	// UserLogins are the login IDs (e.g. usernames or email addresses) of
+	// Users that are members of this group. Unlike UserIDs/UserRefs, these
+	// don't require a corresponding User managed resource to exist - each
+	// login is resolved to a GUID directly against DIP on every reconcile.
+	// Useful for adding existing HSDP users you don't want Crossplane to own
+	// the lifecycle of.
+	// +optional
+	UserLogins []string `json:"userLogins,omitempty"`
+
 	// ServiceIDs are the GUIDs of the Services that are members of this
 	// group.
 	// +optional

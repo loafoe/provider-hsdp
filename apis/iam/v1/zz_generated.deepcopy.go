@@ -933,6 +933,11 @@ func (in *GroupParameters) DeepCopyInto(out *GroupParameters) {
 		*out = new(v2.NamespacedSelector)
 		(*in).DeepCopyInto(*out)
 	}
+	if in.UserLogins != nil {
+		in, out := &in.UserLogins, &out.UserLogins
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
 	if in.ServiceIDs != nil {
 		in, out := &in.ServiceIDs, &out.ServiceIDs
 		*out = make([]string, len(*in))

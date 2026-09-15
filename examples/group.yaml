@@ -18,6 +18,13 @@ spec:
     # userRefs adds each referenced User as a member of this Group.
     userRefs:
       - name: example-user
+    # userLogins adds existing HSDP users as members of this Group by login
+    # ID (e.g. a username or email address), resolved to a GUID on every
+    # reconcile. Use this instead of userRefs when you only know a user's
+    # login and don't want Crossplane to own that User's full lifecycle
+    # (creating/deleting a User resource for them).
+    userLogins:
+      - jsmith01
     # serviceRefs adds each referenced Service as a member of this Group.
     serviceRefs:
       - name: example-service

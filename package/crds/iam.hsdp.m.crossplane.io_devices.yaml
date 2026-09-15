@@ -4,7 +4,7 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.0
-  name: roles.iam.hsdp.m.crossplane.io
+  name: devices.iam.hsdp.m.crossplane.io
 spec:
   group: iam.hsdp.m.crossplane.io
   names:
@@ -12,10 +12,10 @@ spec:
     - crossplane
     - managed
     - hsdp
-    kind: Role
-    listKind: RoleList
-    plural: roles
-    singular: role
+    kind: Device
+    listKind: DeviceList
+    plural: devices
+    singular: device
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
@@ -34,7 +34,7 @@ spec:
     name: v1
     schema:
       openAPIV3Schema:
-        description: Role is the Schema for the Role API.
+        description: Device is the Schema for the Device API.
         properties:
           apiVersion:
             description: |-
@@ -54,20 +54,17 @@ spec:
           metadata:
             type: object
           spec:
-            description: RoleSpec defines the desired state of a Role.
+            description: DeviceSpec defines the desired state of a Device.
             properties:
               forProvider:
-                description: RoleParameters are the configurable fields of a Role.
+                description: DeviceParameters are the configurable fields of a Device.
                 properties:
-                  description:
-                    description: Description of the role.
+                  applicationId:
+                    description: ApplicationID is the application GUID this device
+                      belongs to.
                     type: string
-                  managingOrganizationId:
-                    description: ManagingOrganizationID is the organization GUID that
-                      manages this role.
-                    type: string
-                  managingOrganizationRef:
-                    description: ManagingOrganizationRef references an Organization.
+                  applicationRef:
+                    description: ApplicationRef references an Application.
                     properties:
                       name:
                         description: Name of the referenced object.
@@ -103,8 +100,8 @@ spec:
                     required:
                     - name
                     type: object
-                  managingOrganizationSelector:
-                    description: ManagingOrganizationSelector selects an Organization.
+                  applicationSelector:
+                    description: ApplicationSelector selects an Application.
                     properties:
                       matchControllerRef:
                         description: |-
@@ -146,124 +143,151 @@ spec:
                             type: string
                         type: object
                     type: object
-                  name:
-                    description: Name of the role. Immutable after creation.
+                  deviceExtIdSystem:
+                    description: |-
+                      DeviceExtIDSystem identifies the coding system of the external
+                      device identifier.
+                    type: string
+                  deviceExtIdValue:
+                    description: DeviceExtIDValue is the external device identifier
+                      value.
+                    type: string
+                  forTest:
+                    description: ForTest indicates whether this is a test device.
+                    type: boolean
+                  globalReferenceId:
+                    description: |-
+                      GlobalReferenceID is a globally unique identifier for the device.
+                      Must be 3-50 characters.
+                    maxLength: 50
+                    minLength: 3
+                    type: string
+                  loginId:
+                    description: |-
+                      LoginID is the unique login/username for the device. Must be 5-50
+                      characters. Immutable after creation.
+                    maxLength: 50
+                    minLength: 5
                     type: string
                     x-kubernetes-validations:
-                    - message: name is immutable
+                    - message: loginId is immutable
                       rule: self == oldSelf
-                  permissions:
-                    description: Permissions is the list of permission names assigned
-                      to this role.
-                    items:
-                      type: string
-                    type: array
-                  sharingPolicies:
-                    description: SharingPolicies share this role with other Organizations.
-                    items:
-                      description: |-
-                        RoleSharingPolicyParameters describe a sharing policy that grants this
-                        role to another Organization.
-                      properties:
-                        purpose:
-                          description: Purpose describes why this role is being shared.
+                  organizationId:
+                    description: OrganizationID is the organization GUID that owns
+                      this device.
+                    type: string
+                  organizationRef:
+                    description: OrganizationRef references an Organization.
+                    properties:
+                      name:
+                        description: Name of the referenced object.
+                        type: string
+                      namespace:
+                        description: Namespace of the referenced object
+                        type: string
+                      policy:
+                        description: Policies for referencing.
+                        properties:
+                          resolution:
+                            default: Required
+                            description: |-
+                              Resolution specifies whether resolution of this reference is required.
+                              The default is 'Required', which means the reconcile will fail if the
+                              reference cannot be resolved. 'Optional' means this reference will be
+                              a no-op if it cannot be resolved.
+                            enum:
+                            - Required
+                            - Optional
+                            type: string
+                          resolve:
+                            description: |-
+                              Resolve specifies when this reference should be resolved. The default
+                              is 'IfNotPresent', which will attempt to resolve the reference only when
+                              the corresponding field is not present. Use 'Always' to resolve the
+                              reference on every reconcile.
+                            enum:
+                            - Always
+                            - IfNotPresent
+                            type: string
+                        type: object
+                    required:
+                    - name
+                    type: object
+                  organizationSelector:
+                    description: OrganizationSelector selects an Organization.
+                    properties:
+                      matchControllerRef:
+                        description: |-
+                          MatchControllerRef ensures an object with the same controller reference
+                          as the selecting object is selected.
+                        type: boolean
+                      matchLabels:
+                        additionalProperties:
                           type: string
-                        sharingPolicy:
-                          description: SharingPolicy is the sharing mode, e.g. "ALL_USERS".
-                          type: string
-                        targetOrganizationId:
-                          description: |-
-                            TargetOrganizationID is the GUID of the Organization to share this
-                            role with.
-                          type: string
-                        targetOrganizationRef:
-                          description: TargetOrganizationRef references the target
-                            Organization.
-                          properties:
-                            name:
-                              description: Name of the referenced object.
-                              type: string
-                            namespace:
-                              description: Namespace of the referenced object
-                              type: string
-                            policy:
-                              description: Policies for referencing.
-                              properties:
-                                resolution:
-                                  default: Required
-                                  description: |-
-                                    Resolution specifies whether resolution of this reference is required.
-                                    The default is 'Required', which means the reconcile will fail if the
-                                    reference cannot be resolved. 'Optional' means this reference will be
-                                    a no-op if it cannot be resolved.
-                                  enum:
-                                  - Required
-                                  - Optional
-                                  type: string
-                                resolve:
-                                  description: |-
-                                    Resolve specifies when this reference should be resolved. The default
-                                    is 'IfNotPresent', which will attempt to resolve the reference only when
-                                    the corresponding field is not present. Use 'Always' to resolve the
-                                    reference on every reconcile.
-                                  enum:
-                                  - Always
-                                  - IfNotPresent
-                                  type: string
-                              type: object
-                          required:
-                          - name
-                          type: object
-                        targetOrganizationSelector:
-                          description: TargetOrganizationSelector selects the target
-                            Organization.
-                          properties:
-                            matchControllerRef:
-                              description: |-
-                                MatchControllerRef ensures an object with the same controller reference
-                                as the selecting object is selected.
-                              type: boolean
-                            matchLabels:
-                              additionalProperties:
-                                type: string
-                              description: MatchLabels ensures an object with matching
-                                labels is selected.
-                              type: object
-                            namespace:
-                              description: Namespace for the selector
-                              type: string
-                            policy:
-                              description: Policies for selection.
-                              properties:
-                                resolution:
-                                  default: Required
-                                  description: |-
-                                    Resolution specifies whether resolution of this reference is required.
-                                    The default is 'Required', which means the reconcile will fail if the
-                                    reference cannot be resolved. 'Optional' means this reference will be
-                                    a no-op if it cannot be resolved.
-                                  enum:
-                                  - Required
-                                  - Optional
-                                  type: string
-                                resolve:
-                                  description: |-
-                                    Resolve specifies when this reference should be resolved. The default
-                                    is 'IfNotPresent', which will attempt to resolve the reference only when
-                                    the corresponding field is not present. Use 'Always' to resolve the
-                                    reference on every reconcile.
-                                  enum:
-                                  - Always
-                                  - IfNotPresent
-                                  type: string
-                              type: object
-                          type: object
-                      required:
-                      - sharingPolicy
-                      type: object
-                    type: array
+                        description: MatchLabels ensures an object with matching labels
+                          is selected.
+                        type: object
+                      namespace:
+                        description: Namespace for the selector
+                        type: string
+                      policy:
+                        description: Policies for selection.
+                        properties:
+                          resolution:
+                            default: Required
+                            description: |-
+                              Resolution specifies whether resolution of this reference is required.
+                              The default is 'Required', which means the reconcile will fail if the
+                              reference cannot be resolved. 'Optional' means this reference will be
+                              a no-op if it cannot be resolved.
+                            enum:
+                            - Required
+                            - Optional
+                            type: string
+                          resolve:
+                            description: |-
+                              Resolve specifies when this reference should be resolved. The default
+                              is 'IfNotPresent', which will attempt to resolve the reference only when
+                              the corresponding field is not present. Use 'Always' to resolve the
+                              reference on every reconcile.
+                            enum:
+                            - Always
+                            - IfNotPresent
+                            type: string
+                        type: object
+                    type: object
+                  passwordSecretRef:
+                    description: |-
+                      PasswordSecretRef references a Secret containing the device password.
+                      Immutable after creation.
+                    properties:
+                      key:
+                        description: The key to select.
+                        type: string
+                      name:
+                        description: Name of the secret.
+                        type: string
+                      namespace:
+                        description: Namespace of the secret.
+                        type: string
+                    required:
+                    - key
+                    - name
+                    - namespace
+                    type: object
+                  text:
+                    description: Text is a free-text description of the device.
+                    type: string
+                  type:
+                    description: Type of the device.
+                    type: string
                 required:
-                - name
+                - deviceExtIdSystem
+                - deviceExtIdValue
+                - globalReferenceId
+                - loginId
+                - passwordSecretRef
+                - type
                 type: object
               managementPolicies:
                 default:
@@ -324,39 +348,17 @@ spec:
             - forProvider
             type: object
           status:
-            description: RoleStatus represents the observed state of a Role.
+            description: DeviceStatus represents the observed state of a Device.
             properties:
               atProvider:
-                description: RoleObservation are the observable fields of a Role.
+                description: DeviceObservation are the observable fields of a Device.
                 properties:
-                  description:
-                    description: Description as returned by DIP.
-                    type: string
                   id:
-                    description: ID is the GUID of the role.
+                    description: ID is the GUID of the device.
                     type: string
-                  sharingPolicies:
-                    description: |-
-                      SharingPolicies are the sharing policies currently in effect for this
-                      role, as observed from DIP.
-                    items:
-                      description: RoleSharingPolicyStatus is the observed state of
-                        a RoleSharingPolicy.
-                      properties:
-                        purpose:
-                          description: Purpose as returned by DIP.
-                          type: string
-                        sharingPolicy:
-                          description: SharingPolicy is the sharing mode currently
-                            in effect.
-                          type: string
-                        targetOrganizationId:
-                          description: |-
-                            TargetOrganizationID is the GUID of the Organization this role is
-                            shared with.
-                          type: string
-                      type: object
-                    type: array
+                  isActive:
+                    description: IsActive as returned by DIP.
+                    type: boolean
                 type: object
               conditions:
                 description: Conditions of the resource.

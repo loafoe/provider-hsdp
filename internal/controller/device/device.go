@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package role
+package device
 
 import (
 	"context"
@@ -29,6 +29,8 @@ import (
 	xpv1 "github.com/crossplane/crossplane/apis/v2/core/v2"
 	"github.com/philips-software/go-dip-api/iam"
 	"github.com/pkg/errors"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -39,16 +41,17 @@ import (
 )
 
 const (
-	errNotRole      = "managed resource is not a Role"
+	errNotDevice    = "managed resource is not a Device"
 	errTrackPCUsage = "cannot track ProviderConfig usage"
 	errGetPC        = "cannot get ProviderConfig"
 	errGetCreds     = "cannot get credentials"
 	errNewClient    = "cannot create DIP client"
+	errGetPassword  = "cannot get password from secret"
 )
 
-// Setup adds a controller that reconciles Role managed resources.
+// Setup adds a controller that reconciles Device managed resources.
 func Setup(mgr ctrl.Manager, o controller.Options) error {
-	name := managed.ControllerName(iamv1.RoleGroupKind)
+	name := managed.ControllerName(iamv1.DeviceGroupKind)
 
 	opts := []managed.ReconcilerOption{
 		managed.WithExternalConnector(&connector{
@@ -70,13 +73,13 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 	// cache before the real GUID is known.
 	opts = append(opts, managed.WithInitializers())
 
-	r := managed.NewReconciler(mgr, resource.ManagedKind(iamv1.RoleGroupVersionKind), opts...)
+	r := managed.NewReconciler(mgr, resource.ManagedKind(iamv1.DeviceGroupVersionKind), opts...)
 
 	return ctrl.NewControllerManagedBy(mgr).
 		Named(name).
 		WithOptions(o.ForControllerRuntime()).
 		WithEventFilter(resource.DesiredStateChanged()).
-		For(&iamv1.Role{}).
+		For(&iamv1.Device{}).
 		Complete(ratelimiter.NewReconciler(name, r, o.GlobalRateLimiter))
 }
 
@@ -86,9 +89,9 @@ type connector struct {
 }
 
 func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.ExternalClient, error) {
-	cr, ok := mg.(*iamv1.Role)
+	cr, ok := mg.(*iamv1.Device)
 	if !ok {
-		return nil, errors.New(errNotRole)
+		return nil, errors.New(errNotDevice)
 	}
 
 	if err := c.usage.Track(ctx, cr); err != nil {
@@ -118,17 +121,19 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 		return nil, errors.Wrap(err, errNewClient)
 	}
 
-	return &external{client: dipClient}, nil
+	return &external{client: dipClient, kube: c.kube, namespace: m.GetNamespace()}, nil
 }
 
 type external struct {
-	client *dip.Client
+	client    *dip.Client
+	kube      client.Client
+	namespace string
 }
 
 func (e *external) Observe(ctx context.Context, mg resource.Managed) (managed.ExternalObservation, error) {
-	cr, ok := mg.(*iamv1.Role)
+	cr, ok := mg.(*iamv1.Device)
 	if !ok {
-		return managed.ExternalObservation{}, errors.New(errNotRole)
+		return managed.ExternalObservation{}, errors.New(errNotDevice)
 	}
 
 	externalName := meta.GetExternalName(cr)
@@ -140,89 +145,118 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 		return managed.ExternalObservation{ResourceExists: false}, nil
 	}
 
-	role, resp, err := e.client.IAM.Roles.GetRoleByID(externalName)
+	device, resp, err := e.client.IAM.Devices.GetDeviceByID(externalName)
 	if err != nil {
 		if resp != nil && util.IsNotFoundOrInvalidID(resp.StatusCode()) {
 			return managed.ExternalObservation{ResourceExists: false}, nil
 		}
-		return managed.ExternalObservation{}, errors.Wrap(err, "cannot get role")
+		return managed.ExternalObservation{}, errors.Wrap(err, "cannot get device")
 	}
-	if role == nil {
+	if device == nil {
 		return managed.ExternalObservation{ResourceExists: false}, nil
 	}
 
-	cr.Status.AtProvider.ID = &role.ID
-	cr.Status.AtProvider.Description = util.StringPtrOrNil(role.Description)
-
-	sharingPolicies, _, err := e.client.IAM.Roles.ListSharingPolicies(*role, nil)
-	if err != nil {
-		return managed.ExternalObservation{}, errors.Wrap(err, "cannot list role sharing policies")
-	}
-	cr.Status.AtProvider.SharingPolicies = toSharingPolicyStatuses(sharingPolicies)
+	cr.Status.AtProvider.ID = &device.ID
+	cr.Status.AtProvider.IsActive = &device.IsActive
 
 	cr.Status.SetConditions(xpv1.Available())
 
 	return managed.ExternalObservation{
 		ResourceExists:   true,
-		ResourceUpToDate: e.isUpToDate(cr, role),
+		ResourceUpToDate: e.isUpToDate(cr, device),
 	}, nil
 }
 
-func toSharingPolicyStatuses(policies *[]iam.RoleSharingPolicy) []iamv1.RoleSharingPolicyStatus {
-	if policies == nil {
-		return nil
-	}
-	out := make([]iamv1.RoleSharingPolicyStatus, 0, len(*policies))
-	for _, p := range *policies {
-		out = append(out, iamv1.RoleSharingPolicyStatus{
-			TargetOrganizationID: p.TargetOrganizationID,
-			SharingPolicy:        p.SharingPolicy,
-			Purpose:              p.Purpose,
-		})
-	}
-	return out
-}
-
-func (e *external) isUpToDate(cr *iamv1.Role, role *iam.Role) bool {
+func (e *external) isUpToDate(cr *iamv1.Device, device *iam.Device) bool {
 	fp := cr.Spec.ForProvider
 
-	if fp.Name != role.Name {
+	if fp.LoginID != device.LoginID {
 		return false
 	}
-	if fp.Description != nil && *fp.Description != role.Description {
+	if fp.Type != device.Type {
 		return false
 	}
-	// Note: Permissions are managed separately via the Roles API
-	// We're not checking them here for simplicity
-	if !sharingPoliciesUpToDate(fp.SharingPolicies, cr.Status.AtProvider.SharingPolicies) {
+	if fp.GlobalReferenceID != device.GlobalReferenceID {
+		return false
+	}
+	if fp.Text != nil && *fp.Text != device.Text {
+		return false
+	}
+	if fp.ForTest != nil && *fp.ForTest != device.ForTest {
 		return false
 	}
 	return true
 }
 
-func (e *external) Create(ctx context.Context, mg resource.Managed) (managed.ExternalCreation, error) {
-	cr, ok := mg.(*iamv1.Role)
+func (e *external) getPassword(ctx context.Context, ref xpv1.SecretKeySelector, namespace string) (string, error) {
+	nn := types.NamespacedName{
+		Name:      ref.Name,
+		Namespace: ref.Namespace,
+	}
+	if nn.Namespace == "" {
+		nn.Namespace = namespace
+	}
+
+	secret := &corev1.Secret{}
+	if err := e.kube.Get(ctx, nn, secret); err != nil {
+		return "", errors.Wrap(err, "cannot get secret")
+	}
+
+	key := ref.Key
+	if key == "" {
+		key = "password"
+	}
+
+	password, ok := secret.Data[key]
 	if !ok {
-		return managed.ExternalCreation{}, errors.New(errNotRole)
+		return "", errors.Errorf("secret %s/%s does not have key %s", nn.Namespace, nn.Name, key)
+	}
+
+	return string(password), nil
+}
+
+func (e *external) Create(ctx context.Context, mg resource.Managed) (managed.ExternalCreation, error) {
+	cr, ok := mg.(*iamv1.Device)
+	if !ok {
+		return managed.ExternalCreation{}, errors.New(errNotDevice)
 	}
 
 	cr.Status.SetConditions(xpv1.Creating())
 
 	fp := cr.Spec.ForProvider
 
-	description := ""
-	if fp.Description != nil {
-		description = *fp.Description
-	}
-
-	managingOrg := ""
-	if fp.ManagingOrganizationID != nil {
-		managingOrg = *fp.ManagingOrganizationID
-	}
-
-	created, _, err := e.client.IAM.Roles.CreateRole(fp.Name, description, managingOrg)
+	password, err := e.getPassword(ctx, fp.PasswordSecretRef, e.namespace)
 	if err != nil {
-		return managed.ExternalCreation{}, errors.Wrap(err, "cannot create role")
+		return managed.ExternalCreation{}, errors.Wrap(err, errGetPassword)
+	}
+
+	device := iam.Device{
+		LoginID: fp.LoginID,
+		DeviceExtID: iam.DeviceIdentifier{
+			System: fp.DeviceExtIDSystem,
+			Value:  fp.DeviceExtIDValue,
+		},
+		Password:          password,
+		Type:              fp.Type,
+		GlobalReferenceID: fp.GlobalReferenceID,
+	}
+
+	if fp.Text != nil {
+		device.Text = *fp.Text
+	}
+	if fp.ForTest != nil {
+		device.ForTest = *fp.ForTest
+	}
+	if fp.OrganizationID != nil {
+		device.OrganizationID = *fp.OrganizationID
+	}
+	if fp.ApplicationID != nil {
+		device.ApplicationID = *fp.ApplicationID
+	}
+
+	created, _, err := e.client.IAM.Devices.CreateDevice(device)
+	if err != nil {
+		return managed.ExternalCreation{}, errors.Wrap(err, "cannot create device")
 	}
 
 	meta.SetExternalName(cr, created.ID)
@@ -231,48 +265,37 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 }
 
 func (e *external) Update(ctx context.Context, mg resource.Managed) (managed.ExternalUpdate, error) {
-	cr, ok := mg.(*iamv1.Role)
+	cr, ok := mg.(*iamv1.Device)
 	if !ok {
-		return managed.ExternalUpdate{}, errors.New(errNotRole)
+		return managed.ExternalUpdate{}, errors.New(errNotDevice)
 	}
 
-	// Note: The DIP API doesn't support updating roles directly
-	// Only description can be changed, and permissions are managed separately
-	// This is a limitation of the IAM API
+	fp := cr.Spec.ForProvider
 
-	role := iam.Role{ID: meta.GetExternalName(cr)}
-
-	toApply, toRemove := diffSharingPolicies(cr.Spec.ForProvider.SharingPolicies, cr.Status.AtProvider.SharingPolicies)
-	for _, p := range toApply {
-		policy := iam.RoleSharingPolicy{SharingPolicy: p.SharingPolicy}
-		if p.TargetOrganizationID != nil {
-			policy.TargetOrganizationID = *p.TargetOrganizationID
-		}
-		if p.Purpose != nil {
-			policy.Purpose = *p.Purpose
-		}
-		if _, _, err := e.client.IAM.Roles.ApplySharingPolicy(role, policy); err != nil {
-			return managed.ExternalUpdate{}, errors.Wrapf(err, "cannot apply sharing policy for organization %s", policy.TargetOrganizationID)
-		}
+	device := iam.Device{
+		ID:   meta.GetExternalName(cr),
+		Type: fp.Type,
 	}
-	for _, p := range toRemove {
-		policy := iam.RoleSharingPolicy{
-			TargetOrganizationID: p.TargetOrganizationID,
-			SharingPolicy:        p.SharingPolicy,
-			Purpose:              p.Purpose,
-		}
-		if _, _, err := e.client.IAM.Roles.RemoveSharingPolicy(role, policy); err != nil {
-			return managed.ExternalUpdate{}, errors.Wrapf(err, "cannot remove sharing policy for organization %s", policy.TargetOrganizationID)
-		}
+
+	if fp.Text != nil {
+		device.Text = *fp.Text
+	}
+	if fp.ForTest != nil {
+		device.ForTest = *fp.ForTest
+	}
+
+	_, _, err := e.client.IAM.Devices.UpdateDevice(device)
+	if err != nil {
+		return managed.ExternalUpdate{}, errors.Wrap(err, "cannot update device")
 	}
 
 	return managed.ExternalUpdate{}, nil
 }
 
 func (e *external) Delete(ctx context.Context, mg resource.Managed) (managed.ExternalDelete, error) {
-	cr, ok := mg.(*iamv1.Role)
+	cr, ok := mg.(*iamv1.Device)
 	if !ok {
-		return managed.ExternalDelete{}, errors.New(errNotRole)
+		return managed.ExternalDelete{}, errors.New(errNotDevice)
 	}
 
 	cr.Status.SetConditions(xpv1.Deleting())
@@ -282,9 +305,9 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) (managed.Ext
 		return managed.ExternalDelete{}, nil
 	}
 
-	_, _, err := e.client.IAM.Roles.DeleteRole(iam.Role{ID: externalName})
+	_, _, err := e.client.IAM.Devices.DeleteDevice(iam.Device{ID: externalName})
 	if err != nil {
-		return managed.ExternalDelete{}, errors.Wrap(err, "cannot delete role")
+		return managed.ExternalDelete{}, errors.Wrap(err, "cannot delete device")
 	}
 
 	return managed.ExternalDelete{}, nil

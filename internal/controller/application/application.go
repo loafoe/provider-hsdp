@@ -146,10 +146,11 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 		if resp != nil && util.IsNotFoundOrInvalidID(resp.StatusCode()) {
 			return managed.ExternalObservation{ResourceExists: false}, nil
 		}
-		// GetApplicationByID searches rather than fetching by path, so a
-		// deleted application comes back as a successful response with zero
-		// results (ErrEmptyResults), not a 404 - handle that as not-found too.
-		if stderrors.Is(err, iam.ErrEmptyResults) {
+		// GetApplicationByID searches rather than fetching by path, and
+		// discards the underlying ErrEmptyResults in favor of its own
+		// ErrNotFound when the search comes up empty - handle that as
+		// not-found too, since it's not a real 404.
+		if stderrors.Is(err, iam.ErrNotFound) {
 			return managed.ExternalObservation{ResourceExists: false}, nil
 		}
 		return managed.ExternalObservation{}, errors.Wrap(err, "cannot get application")

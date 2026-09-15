@@ -24,8 +24,8 @@ import (
 	"github.com/crossplane/crossplane-runtime/v2/pkg/resource"
 	ctrl "sigs.k8s.io/controller-runtime"
 
-	apisv1 "github.com/loafoe/provider-hsdp/apis/v1"
 	apismv1 "github.com/loafoe/provider-hsdp/apis/m/v1"
+	apisv1 "github.com/loafoe/provider-hsdp/apis/v1"
 )
 
 // Setup adds controllers that reconcile ProviderConfigs and

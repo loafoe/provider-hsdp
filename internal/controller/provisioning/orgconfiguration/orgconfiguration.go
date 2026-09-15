@@ -34,8 +34,8 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	provisioningv1 "github.com/loafoe/provider-hsdp/apis/provisioning/v1"
 	apismv1 "github.com/loafoe/provider-hsdp/apis/m/v1"
+	provisioningv1 "github.com/loafoe/provider-hsdp/apis/provisioning/v1"
 	"github.com/loafoe/provider-hsdp/internal/clients/dip"
 	"github.com/loafoe/provider-hsdp/internal/util"
 )

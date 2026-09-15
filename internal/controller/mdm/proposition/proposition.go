@@ -32,8 +32,8 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	mdmv1 "github.com/loafoe/provider-hsdp/apis/mdm/v1"
 	apismv1 "github.com/loafoe/provider-hsdp/apis/m/v1"
+	mdmv1 "github.com/loafoe/provider-hsdp/apis/mdm/v1"
 	"github.com/loafoe/provider-hsdp/internal/clients/dip"
 	"github.com/loafoe/provider-hsdp/internal/util"
 )

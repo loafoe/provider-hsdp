@@ -154,23 +154,9 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 	cr.Status.AtProvider.ID = &group.ID
 	cr.Status.AtProvider.Description = util.StringPtrOrNil(group.Description)
 
-	assignedRoleIDs, err := e.assignedRoleIDs(*group)
-	if err != nil {
-		return managed.ExternalObservation{}, errors.Wrap(err, "cannot get roles assigned to group")
+	if err := e.populateAssignedIDs(cr, externalName, *group); err != nil {
+		return managed.ExternalObservation{}, err
 	}
-	cr.Status.AtProvider.AssignedRoleIDs = assignedRoleIDs
-
-	assignedUserIDs, err := e.assignedMemberIDs(externalName, "User")
-	if err != nil {
-		return managed.ExternalObservation{}, errors.Wrap(err, "cannot get users assigned to group")
-	}
-	cr.Status.AtProvider.AssignedUserIDs = assignedUserIDs
-
-	assignedServiceIDs, err := e.assignedMemberIDs(externalName, "Service")
-	if err != nil {
-		return managed.ExternalObservation{}, errors.Wrap(err, "cannot get services assigned to group")
-	}
-	cr.Status.AtProvider.AssignedServiceIDs = assignedServiceIDs
 
 	cr.Status.SetConditions(xpv1.Available())
 
@@ -178,6 +164,31 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 		ResourceExists:   true,
 		ResourceUpToDate: e.isUpToDate(cr, group),
 	}, nil
+}
+
+// populateAssignedIDs reads back the roles/users/services currently assigned
+// to the group from DIP and stores them on cr.Status.AtProvider, for isUpToDate
+// to diff against.
+func (e *external) populateAssignedIDs(cr *iamv1.Group, externalName string, group iam.Group) error {
+	assignedRoleIDs, err := e.assignedRoleIDs(group)
+	if err != nil {
+		return errors.Wrap(err, "cannot get roles assigned to group")
+	}
+	cr.Status.AtProvider.AssignedRoleIDs = assignedRoleIDs
+
+	assignedUserIDs, err := e.assignedMemberIDs(externalName, "User")
+	if err != nil {
+		return errors.Wrap(err, "cannot get users assigned to group")
+	}
+	cr.Status.AtProvider.AssignedUserIDs = assignedUserIDs
+
+	assignedServiceIDs, err := e.assignedMemberIDs(externalName, "Service")
+	if err != nil {
+		return errors.Wrap(err, "cannot get services assigned to group")
+	}
+	cr.Status.AtProvider.AssignedServiceIDs = assignedServiceIDs
+
+	return nil
 }
 
 // assignedRoleIDs returns the GUIDs of the Roles currently assigned to group,
@@ -292,13 +303,35 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 		return managed.ExternalUpdate{}, errors.Wrap(err, "cannot update group")
 	}
 
-	toAdd, toRemove := diffIDs(desiredIDs(fp.RoleIDs, fp.RoleRefs, fp.RoleSelector), cr.Status.AtProvider.AssignedRoleIDs)
+	toAddRoles, toRemoveRoles := diffIDs(desiredIDs(fp.RoleIDs, fp.RoleRefs, fp.RoleSelector), cr.Status.AtProvider.AssignedRoleIDs)
+	if err := e.reconcileRoles(ctx, group, toAddRoles, toRemoveRoles); err != nil {
+		return managed.ExternalUpdate{}, err
+	}
+
+	toAddUsers, toRemoveUsers := diffIDs(desiredIDs(fp.UserIDs, fp.UserRefs, fp.UserSelector), cr.Status.AtProvider.AssignedUserIDs)
+	if err := e.reconcileMembers(ctx, group, toAddUsers, toRemoveUsers,
+		e.client.IAM.Groups.AddMembers, e.client.IAM.Groups.RemoveMembers, "members"); err != nil {
+		return managed.ExternalUpdate{}, err
+	}
+
+	toAddServices, toRemoveServices := diffIDs(desiredIDs(fp.ServiceIDs, fp.ServiceRefs, fp.ServiceSelector), cr.Status.AtProvider.AssignedServiceIDs)
+	if err := e.reconcileMembers(ctx, group, toAddServices, toRemoveServices,
+		e.client.IAM.Groups.AddServices, e.client.IAM.Groups.RemoveServices, "services"); err != nil {
+		return managed.ExternalUpdate{}, err
+	}
+
+	return managed.ExternalUpdate{}, nil
+}
+
+// reconcileRoles assigns/removes roles on group one at a time, since the
+// underlying DIP API only supports a single role per call.
+func (e *external) reconcileRoles(ctx context.Context, group iam.Group, toAdd, toRemove []string) error {
 	for _, roleID := range toAdd {
 		if err := retryTransient(ctx, func() (*iam.Response, error) {
 			_, resp, err := e.client.IAM.Groups.AssignRole(ctx, group, iam.Role{ID: roleID})
 			return resp, err
 		}); err != nil {
-			return managed.ExternalUpdate{}, errors.Wrapf(err, "cannot assign role %s to group", roleID)
+			return errors.Wrapf(err, "cannot assign role %s to group", roleID)
 		}
 	}
 	for _, roleID := range toRemove {
@@ -306,47 +339,33 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 			_, resp, err := e.client.IAM.Groups.RemoveRole(ctx, group, iam.Role{ID: roleID})
 			return resp, err
 		}); err != nil {
-			return managed.ExternalUpdate{}, errors.Wrapf(err, "cannot remove role %s from group", roleID)
+			return errors.Wrapf(err, "cannot remove role %s from group", roleID)
 		}
 	}
+	return nil
+}
 
-	toAddUsers, toRemoveUsers := diffIDs(desiredIDs(fp.UserIDs, fp.UserRefs, fp.UserSelector), cr.Status.AtProvider.AssignedUserIDs)
-	if len(toAddUsers) > 0 {
+// reconcileMembers adds/removes members (users or services) on group in bulk,
+// via the given add/remove SDK calls, retrying transient DIP errors.
+func (e *external) reconcileMembers(ctx context.Context, group iam.Group, toAdd, toRemove []string,
+	add, remove func(context.Context, iam.Group, ...string) (iam.MemberResponse, *iam.Response, error), kind string) error {
+	if len(toAdd) > 0 {
 		if err := retryTransient(ctx, func() (*iam.Response, error) {
-			_, resp, err := e.client.IAM.Groups.AddMembers(ctx, group, toAddUsers...)
+			_, resp, err := add(ctx, group, toAdd...)
 			return resp, err
 		}); err != nil {
-			return managed.ExternalUpdate{}, errors.Wrap(err, "cannot add members to group")
+			return errors.Wrapf(err, "cannot add %s to group", kind)
 		}
 	}
-	if len(toRemoveUsers) > 0 {
+	if len(toRemove) > 0 {
 		if err := retryTransient(ctx, func() (*iam.Response, error) {
-			_, resp, err := e.client.IAM.Groups.RemoveMembers(ctx, group, toRemoveUsers...)
+			_, resp, err := remove(ctx, group, toRemove...)
 			return resp, err
 		}); err != nil {
-			return managed.ExternalUpdate{}, errors.Wrap(err, "cannot remove members from group")
+			return errors.Wrapf(err, "cannot remove %s from group", kind)
 		}
 	}
-
-	toAddServices, toRemoveServices := diffIDs(desiredIDs(fp.ServiceIDs, fp.ServiceRefs, fp.ServiceSelector), cr.Status.AtProvider.AssignedServiceIDs)
-	if len(toAddServices) > 0 {
-		if err := retryTransient(ctx, func() (*iam.Response, error) {
-			_, resp, err := e.client.IAM.Groups.AddServices(ctx, group, toAddServices...)
-			return resp, err
-		}); err != nil {
-			return managed.ExternalUpdate{}, errors.Wrap(err, "cannot add services to group")
-		}
-	}
-	if len(toRemoveServices) > 0 {
-		if err := retryTransient(ctx, func() (*iam.Response, error) {
-			_, resp, err := e.client.IAM.Groups.RemoveServices(ctx, group, toRemoveServices...)
-			return resp, err
-		}); err != nil {
-			return managed.ExternalUpdate{}, errors.Wrap(err, "cannot remove services from group")
-		}
-	}
-
-	return managed.ExternalUpdate{}, nil
+	return nil
 }
 
 func (e *external) Delete(ctx context.Context, mg resource.Managed) (managed.ExternalDelete, error) {

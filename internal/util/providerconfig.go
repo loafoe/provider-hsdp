@@ -25,8 +25,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	apisv1 "github.com/loafoe/provider-hsdp/apis/v1"
 	apismv1 "github.com/loafoe/provider-hsdp/apis/m/v1"
+	apisv1 "github.com/loafoe/provider-hsdp/apis/v1"
 )
 
 const (

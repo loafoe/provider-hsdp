@@ -148,6 +148,40 @@ func (mg *Group) ResolveReferences(ctx context.Context, c client.Reader) error {
 	mg.Spec.ForProvider.RoleIDs = mrsp.ResolvedValues
 	mg.Spec.ForProvider.RoleRefs = mrsp.ResolvedReferences
 
+	mrsp, err = r.ResolveMultiple(ctx, reference.MultiNamespacedResolutionRequest{
+		CurrentValues: mg.Spec.ForProvider.UserIDs,
+		Extract:       reference.ExternalName(),
+		Namespace:     mg.GetNamespace(),
+		References:    mg.Spec.ForProvider.UserRefs,
+		Selector:      mg.Spec.ForProvider.UserSelector,
+		To: reference.To{
+			List:    &UserList{},
+			Managed: &User{},
+		},
+	})
+	if err != nil {
+		return errors.Wrap(err, "mg.Spec.ForProvider.UserIDs")
+	}
+	mg.Spec.ForProvider.UserIDs = mrsp.ResolvedValues
+	mg.Spec.ForProvider.UserRefs = mrsp.ResolvedReferences
+
+	mrsp, err = r.ResolveMultiple(ctx, reference.MultiNamespacedResolutionRequest{
+		CurrentValues: mg.Spec.ForProvider.ServiceIDs,
+		Extract:       reference.ExternalName(),
+		Namespace:     mg.GetNamespace(),
+		References:    mg.Spec.ForProvider.ServiceRefs,
+		Selector:      mg.Spec.ForProvider.ServiceSelector,
+		To: reference.To{
+			List:    &ServiceList{},
+			Managed: &Service{},
+		},
+	})
+	if err != nil {
+		return errors.Wrap(err, "mg.Spec.ForProvider.ServiceIDs")
+	}
+	mg.Spec.ForProvider.ServiceIDs = mrsp.ResolvedValues
+	mg.Spec.ForProvider.ServiceRefs = mrsp.ResolvedReferences
+
 	return nil
 }
 

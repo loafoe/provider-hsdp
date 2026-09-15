@@ -18,7 +18,6 @@ package user
 
 import (
 	"context"
-	"time"
 
 	"github.com/crossplane/crossplane-runtime/v2/pkg/controller"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/event"
@@ -159,10 +158,7 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 	}
 	cr.Status.AtProvider.AccountStatus = &accountStatus
 	cr.Status.AtProvider.EmailVerified = &user.AccountStatus.EmailVerified
-	if !user.AccountStatus.LastLoginTime.IsZero() {
-		lastLogin := user.AccountStatus.LastLoginTime.Format(time.RFC3339)
-		cr.Status.AtProvider.LastLoginTime = &lastLogin
-	}
+	cr.Status.AtProvider.LastLoginTime = util.StringPtrOrNil(user.AccountStatus.LastLoginTime)
 	cr.Status.AtProvider.MFAStatus = util.StringPtrOrNil(user.AccountStatus.MFAStatus)
 	cr.Status.AtProvider.PhoneVerified = &user.AccountStatus.PhoneVerified
 	cr.Status.AtProvider.MustChangePassword = &user.AccountStatus.MustChangePassword

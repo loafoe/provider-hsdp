@@ -157,8 +157,8 @@ github.com/onsi/ginkgo/v2 v2.27.2 h1:LzwLj0b89qtIy6SSASkzlNvX6WktqurSHwkk2ipF/Ns
 github.com/onsi/ginkgo/v2 v2.27.2/go.mod h1:ArE1D/XhNXBXCBkKOLkbsb2c81dQHCRcF5zwn/ykDRo=
 github.com/onsi/gomega v1.38.3 h1:eTX+W6dobAYfFeGC2PV6RwXRu/MyT+cQguijutvkpSM=
 github.com/onsi/gomega v1.38.3/go.mod h1:ZCU1pkQcXDO5Sl9/VVEGlDyp+zm0m1cmeG5TOzLgdh4=
-github.com/philips-software/go-dip-api v0.99.1-0.20260701104457-10cc2f457274 h1:IyIARXIiInr8s2YGZyZ7EuNHj3YliLLKQ1nDctNjUA8=
-github.com/philips-software/go-dip-api v0.99.1-0.20260701104457-10cc2f457274/go.mod h1:NxVlSaNheYIbW/LjQgQy6XP9rgHcBMafA0IhzegPdhE=
+github.com/philips-software/go-dip-api v0.99.4 h1:8KHGphSvvqd5k33LKhszoeeQuq6vIMtHf+ocSByEOg4=
+github.com/philips-software/go-dip-api v0.99.4/go.mod h1:NxVlSaNheYIbW/LjQgQy6XP9rgHcBMafA0IhzegPdhE=
 github.com/philips-software/go-nih-signer v1.5.0 h1:qMQ2uArwgnSCbZV7GvuiN4cyHLFXqpVFojQKIiF24tE=
 github.com/philips-software/go-nih-signer v1.5.0/go.mod h1:lJQZASlfNi8XiJjEIz/xjdumb7wWU8RuSETQjlaU1f4=
 github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=

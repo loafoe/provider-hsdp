@@ -438,6 +438,28 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) (managed.Ext
 		return managed.ExternalDelete{}, nil
 	}
 
+	// HSDP refuses to delete a Group that still has roles or members
+	// assigned (DELETE /Group/{id} returns 409 "Edit state conflict").
+	// Crossplane's managed reconciler skips Update() while a resource is
+	// being deleted, so this is the only chance to empty the group first,
+	// using the most recent Observe()'s assigned-ID snapshot.
+	group := iam.Group{ID: externalName}
+	if err := e.reconcileRoles(ctx, group, nil, cr.Status.AtProvider.AssignedRoleIDs); err != nil {
+		return managed.ExternalDelete{}, errors.Wrap(err, "cannot remove roles before deleting group")
+	}
+	if err := e.reconcileMembers(ctx, group, nil, cr.Status.AtProvider.AssignedUserIDs,
+		e.client.IAM.Groups.AddMembers, e.client.IAM.Groups.RemoveMembers, "members"); err != nil {
+		return managed.ExternalDelete{}, errors.Wrap(err, "cannot remove members before deleting group")
+	}
+	if err := e.reconcileMembers(ctx, group, nil, cr.Status.AtProvider.AssignedServiceIDs,
+		e.client.IAM.Groups.AddServices, e.client.IAM.Groups.RemoveServices, "services"); err != nil {
+		return managed.ExternalDelete{}, errors.Wrap(err, "cannot remove services before deleting group")
+	}
+	if err := e.reconcileMembers(ctx, group, nil, cr.Status.AtProvider.AssignedDeviceIDs,
+		e.client.IAM.Groups.AddDevices, e.client.IAM.Groups.RemoveDevices, "devices"); err != nil {
+		return managed.ExternalDelete{}, errors.Wrap(err, "cannot remove devices before deleting group")
+	}
+
 	_, _, err := e.client.IAM.Groups.DeleteGroup(iam.Group{ID: externalName})
 	if err != nil {
 		return managed.ExternalDelete{}, errors.Wrap(err, "cannot delete group")

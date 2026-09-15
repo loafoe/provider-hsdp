@@ -8,6 +8,7 @@ tool github.com/crossplane/crossplane-tools/cmd/angryjet
 
 require (
 	github.com/alecthomas/kingpin/v2 v2.4.0
+	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/crossplane/crossplane-runtime/v2 v2.3.3
 	github.com/crossplane/crossplane/apis/v2 v2.0.0-20260424160951-8f231230ebb6
 	github.com/philips-software/go-dip-api v0.99.1-0.20260701104457-10cc2f457274
@@ -23,7 +24,6 @@ require (
 	github.com/alecthomas/units v0.0.0-20240927000941-0f3dac36c52b // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/blang/semver/v4 v4.0.0 // indirect
-	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/crossplane/crossplane-tools v0.0.0-20250731192036-00d407d8b7ec // indirect
 	github.com/dave/jennifer v1.7.1 // indirect

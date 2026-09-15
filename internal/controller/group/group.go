@@ -255,12 +255,18 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 
 	toAdd, toRemove := diffIDs(fp.RoleIDs, cr.Status.AtProvider.AssignedRoleIDs)
 	for _, roleID := range toAdd {
-		if _, _, err := e.client.IAM.Groups.AssignRole(ctx, group, iam.Role{ID: roleID}); err != nil {
+		if err := retryTransient(ctx, func() (*iam.Response, error) {
+			_, resp, err := e.client.IAM.Groups.AssignRole(ctx, group, iam.Role{ID: roleID})
+			return resp, err
+		}); err != nil {
 			return managed.ExternalUpdate{}, errors.Wrapf(err, "cannot assign role %s to group", roleID)
 		}
 	}
 	for _, roleID := range toRemove {
-		if _, _, err := e.client.IAM.Groups.RemoveRole(ctx, group, iam.Role{ID: roleID}); err != nil {
+		if err := retryTransient(ctx, func() (*iam.Response, error) {
+			_, resp, err := e.client.IAM.Groups.RemoveRole(ctx, group, iam.Role{ID: roleID})
+			return resp, err
+		}); err != nil {
 			return managed.ExternalUpdate{}, errors.Wrapf(err, "cannot remove role %s from group", roleID)
 		}
 	}

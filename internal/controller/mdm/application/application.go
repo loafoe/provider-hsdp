@@ -18,6 +18,7 @@ package application
 
 import (
 	"context"
+	stderrors "errors"
 
 	"github.com/crossplane/crossplane-runtime/v2/pkg/controller"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/event"
@@ -148,6 +149,12 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 	app, resp, err := e.client.MDM.Applications.GetApplicationByID(externalName)
 	if err != nil {
 		if resp != nil && util.IsNotFoundOrInvalidID(resp.StatusCode()) {
+			return managed.ExternalObservation{ResourceExists: false}, nil
+		}
+		// GetApplicationByID searches rather than fetching by path, so a
+		// deleted application comes back as a successful response with zero
+		// results (ErrNotFound), not a 404 - handle that as not-found too.
+		if stderrors.Is(err, mdm.ErrNotFound) {
 			return managed.ExternalObservation{ResourceExists: false}, nil
 		}
 		return managed.ExternalObservation{}, errors.Wrap(err, "cannot get MDM application")

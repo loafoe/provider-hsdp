@@ -22,6 +22,7 @@ This provider uses the [go-dip-api](https://github.com/philips-software/go-dip-a
 | User | iam.hsdp.m.crossplane.io | User |
 | EmailTemplate | iam.hsdp.m.crossplane.io | EmailTemplate |
 | PasswordPolicy | iam.hsdp.m.crossplane.io | PasswordPolicy |
+| Device | iam.hsdp.m.crossplane.io | Device |
 
 ### MDM (Master Data Management)
 
@@ -190,6 +191,79 @@ spec:
   providerConfigRef:
     kind: ClusterProviderConfig
     name: default
+```
+
+### Service
+
+A `Service` is an IAM service identity used for machine-to-machine
+authentication via the JWT-bearer grant (`iam.Client.ServiceLogin`). By
+default DIP generates the key pair for you and returns the private key once,
+in the `Create` connection secret.
+
+To bring your own certificate instead — e.g. because the private key is
+managed by an external PKI or, as below, minted by
+[cert-manager](https://cert-manager.io/) — set `selfManagedCertificateSecretRef`
+to a secret containing a PEM x509 certificate. This is only applied at
+creation time; later changes to the secret are not observed or re-applied.
+It's mutually exclusive with `privateKeySecretRef` (which instead takes a PEM
+RSA private key and has DIP/the provider generate a self-signed certificate
+from it).
+
+```yaml
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: my-service-cert
+  namespace: crossplane-system
+spec:
+  secretName: my-service-cert-tls
+  # HSDP requires the certificate's CommonName to be "<service name>.",
+  # i.e. the Service's forProvider.name plus a trailing dot.
+  commonName: "my-service."
+  isCA: true
+  privateKey:
+    algorithm: RSA
+    size: 2048
+    encoding: PKCS1
+  usages:
+    - digital signature
+    - key encipherment
+    - cert sign
+  duration: 8760h
+  issuerRef:
+    name: my-selfsigned-issuer
+    kind: ClusterIssuer
+---
+apiVersion: iam.hsdp.m.crossplane.io/v1
+kind: Service
+metadata:
+  name: my-service
+  namespace: crossplane-system
+spec:
+  forProvider:
+    name: my-service
+    applicationRef:
+      name: my-app
+    validity: 12
+    selfManagedCertificateSecretRef:
+      name: my-service-cert-tls
+      namespace: crossplane-system
+      key: tls.crt
+  providerConfigRef:
+    kind: ClusterProviderConfig
+    name: default
+```
+
+Once `status.atProvider.serviceId` is populated, the corresponding
+`tls.key` in the same cert-manager secret is the private key to sign the
+JWT for `ServiceLogin`:
+
+```go
+client, _ := iam.NewClient(nil, &iam.Config{Region: "eu-west", Environment: "production"})
+err := client.ServiceLogin(iam.Service{
+    ServiceID:  serviceID,   // status.atProvider.serviceId
+    PrivateKey: privateKeyPEM, // the cert-manager secret's tls.key
+})
 ```
 
 ## Development

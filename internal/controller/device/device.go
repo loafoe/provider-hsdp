@@ -18,6 +18,7 @@ package device
 
 import (
 	"context"
+	stderrors "errors"
 	"time"
 
 	"github.com/crossplane/crossplane-runtime/v2/pkg/controller"
@@ -176,6 +177,12 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 	device, resp, err := e.client.IAM.Devices.GetDeviceByID(externalName)
 	if err != nil {
 		if resp != nil && util.IsNotFoundOrInvalidID(resp.StatusCode()) {
+			return managed.ExternalObservation{ResourceExists: false}, nil
+		}
+		// GetDeviceByID searches rather than fetching by path, so a deleted
+		// device comes back as a successful response with zero results
+		// (ErrNotFound), not a 404 - handle that as not-found too.
+		if stderrors.Is(err, iam.ErrNotFound) {
 			return managed.ExternalObservation{ResourceExists: false}, nil
 		}
 		return managed.ExternalObservation{}, errors.Wrap(err, "cannot get device")

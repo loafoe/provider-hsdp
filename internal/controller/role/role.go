@@ -18,6 +18,7 @@ package role
 
 import (
 	"context"
+	stderrors "errors"
 
 	"github.com/crossplane/crossplane-runtime/v2/pkg/controller"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/event"
@@ -143,6 +144,12 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 	role, resp, err := e.client.IAM.Roles.GetRoleByID(externalName)
 	if err != nil {
 		if resp != nil && util.IsNotFoundOrInvalidID(resp.StatusCode()) {
+			return managed.ExternalObservation{ResourceExists: false}, nil
+		}
+		// GetRoleByID does its own client-side check that the returned role's
+		// ID matches, and synthesizes ErrNotFound (not a 404) when it
+		// doesn't - handle that as not-found too.
+		if stderrors.Is(err, iam.ErrNotFound) {
 			return managed.ExternalObservation{ResourceExists: false}, nil
 		}
 		return managed.ExternalObservation{}, errors.Wrap(err, "cannot get role")

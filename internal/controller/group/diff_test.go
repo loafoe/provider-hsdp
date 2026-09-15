@@ -19,6 +19,8 @@ package group
 import (
 	"slices"
 	"testing"
+
+	xpv1 "github.com/crossplane/crossplane/apis/v2/core/v2"
 )
 
 func TestDiffIDs(t *testing.T) {
@@ -85,6 +87,50 @@ func TestDiffIDs(t *testing.T) {
 			wantSame := len(wantAdd) == 0 && len(wantRemov) == 0
 			if got := sameIDs(tc.desired, tc.current); got != wantSame {
 				t.Errorf("sameIDs() = %v, want %v", got, wantSame)
+			}
+		})
+	}
+}
+
+func TestDesiredIDs(t *testing.T) {
+	cases := map[string]struct {
+		ids      []string
+		refs     []xpv1.NamespacedReference
+		selector *xpv1.NamespacedSelector
+		want     []string
+	}{
+		"RefsPresentIDsResolved": {
+			ids:  []string{"a"},
+			refs: []xpv1.NamespacedReference{{Name: "x"}},
+			want: []string{"a"},
+		},
+		"NoRefsNoSelectorStaleIDs": {
+			// This is the bug: refs was emptied, but the resolver leaves the
+			// cached IDs in place. desiredIDs must treat this as "nothing
+			// desired", not "still desired", so a group's last member/role
+			// can actually be removed.
+			ids:  []string{"a"},
+			refs: nil,
+			want: nil,
+		},
+		"NoRefsButSelectorSet": {
+			ids:      []string{"a"},
+			refs:     nil,
+			selector: &xpv1.NamespacedSelector{},
+			want:     []string{"a"},
+		},
+		"NoRefsNoIDsEitherWay": {
+			ids:  nil,
+			refs: nil,
+			want: nil,
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			got := desiredIDs(tc.ids, tc.refs, tc.selector)
+			if !slices.Equal(got, tc.want) {
+				t.Errorf("desiredIDs() = %v, want %v", got, tc.want)
 			}
 		})
 	}

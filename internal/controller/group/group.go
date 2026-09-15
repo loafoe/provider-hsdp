@@ -227,13 +227,13 @@ func (e *external) isUpToDate(cr *iamv1.Group, group *iam.Group) bool {
 	if fp.Description != nil && *fp.Description != group.Description {
 		return false
 	}
-	if !sameIDs(fp.RoleIDs, cr.Status.AtProvider.AssignedRoleIDs) {
+	if !sameIDs(desiredIDs(fp.RoleIDs, fp.RoleRefs, fp.RoleSelector), cr.Status.AtProvider.AssignedRoleIDs) {
 		return false
 	}
-	if !sameIDs(fp.UserIDs, cr.Status.AtProvider.AssignedUserIDs) {
+	if !sameIDs(desiredIDs(fp.UserIDs, fp.UserRefs, fp.UserSelector), cr.Status.AtProvider.AssignedUserIDs) {
 		return false
 	}
-	if !sameIDs(fp.ServiceIDs, cr.Status.AtProvider.AssignedServiceIDs) {
+	if !sameIDs(desiredIDs(fp.ServiceIDs, fp.ServiceRefs, fp.ServiceSelector), cr.Status.AtProvider.AssignedServiceIDs) {
 		return false
 	}
 	return true
@@ -292,7 +292,7 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 		return managed.ExternalUpdate{}, errors.Wrap(err, "cannot update group")
 	}
 
-	toAdd, toRemove := diffIDs(fp.RoleIDs, cr.Status.AtProvider.AssignedRoleIDs)
+	toAdd, toRemove := diffIDs(desiredIDs(fp.RoleIDs, fp.RoleRefs, fp.RoleSelector), cr.Status.AtProvider.AssignedRoleIDs)
 	for _, roleID := range toAdd {
 		if err := retryTransient(ctx, func() (*iam.Response, error) {
 			_, resp, err := e.client.IAM.Groups.AssignRole(ctx, group, iam.Role{ID: roleID})
@@ -310,7 +310,7 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 		}
 	}
 
-	toAddUsers, toRemoveUsers := diffIDs(fp.UserIDs, cr.Status.AtProvider.AssignedUserIDs)
+	toAddUsers, toRemoveUsers := diffIDs(desiredIDs(fp.UserIDs, fp.UserRefs, fp.UserSelector), cr.Status.AtProvider.AssignedUserIDs)
 	if len(toAddUsers) > 0 {
 		if err := retryTransient(ctx, func() (*iam.Response, error) {
 			_, resp, err := e.client.IAM.Groups.AddMembers(ctx, group, toAddUsers...)
@@ -328,7 +328,7 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 		}
 	}
 
-	toAddServices, toRemoveServices := diffIDs(fp.ServiceIDs, cr.Status.AtProvider.AssignedServiceIDs)
+	toAddServices, toRemoveServices := diffIDs(desiredIDs(fp.ServiceIDs, fp.ServiceRefs, fp.ServiceSelector), cr.Status.AtProvider.AssignedServiceIDs)
 	if len(toAddServices) > 0 {
 		if err := retryTransient(ctx, func() (*iam.Response, error) {
 			_, resp, err := e.client.IAM.Groups.AddServices(ctx, group, toAddServices...)

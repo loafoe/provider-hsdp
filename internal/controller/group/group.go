@@ -256,6 +256,10 @@ func (e *external) desiredUserIDs(ctx context.Context, fp iamv1.GroupParameters)
 }
 
 // resolveUserLogins resolves each of the given DIP login IDs to a User GUID.
+// Uses the legacy lookup (a different, older IDM endpoint) rather than
+// GetUserIDByLoginID: the latter is scoped to the caller's own organization
+// and returns 403 for a login belonging to a different organization, while
+// the legacy endpoint resolves logins across organizations.
 func (e *external) resolveUserLogins(ctx context.Context, logins []string) ([]string, error) {
 	ids := make([]string, 0, len(logins))
 	for _, login := range logins {
@@ -263,7 +267,7 @@ func (e *external) resolveUserLogins(ctx context.Context, logins []string) ([]st
 		if err := retryTransient(ctx, func() (*iam.Response, error) {
 			var resp *iam.Response
 			var err error
-			id, resp, err = e.client.IAM.Users.GetUserIDByLoginID(login)
+			id, resp, err = e.client.IAM.Users.LegacyGetUserIDByLoginID(login)
 			return resp, err
 		}); err != nil {
 			return nil, errors.Wrapf(err, "cannot resolve user login %q", login)

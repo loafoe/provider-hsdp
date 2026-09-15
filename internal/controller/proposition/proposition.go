@@ -19,6 +19,7 @@ package proposition
 import (
 	"context"
 	stderrors "errors"
+	"net/http"
 
 	"github.com/crossplane/crossplane-runtime/v2/pkg/controller"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/event"
@@ -144,14 +145,8 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 
 	prop, resp, err := e.client.IAM.Propositions.GetPropositionByID(externalName)
 	if err != nil {
-		if resp != nil && util.IsNotFoundOrInvalidID(resp.StatusCode()) {
-			return managed.ExternalObservation{ResourceExists: false}, nil
-		}
-		// GetPropositionByID searches rather than fetching by path, so a
-		// deleted proposition comes back as a successful response with zero
-		// results (ErrEmptyResults), not a 404 - handle that as not-found too.
-		if stderrors.Is(err, iam.ErrEmptyResults) {
-			return managed.ExternalObservation{ResourceExists: false}, nil
+		if obs, handled, herr := e.resolveGetError(cr, externalName, resp, err); handled {
+			return obs, herr
 		}
 		return managed.ExternalObservation{}, errors.Wrap(err, "cannot get proposition")
 	}
@@ -169,6 +164,60 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 		ResourceExists:   true,
 		ResourceUpToDate: e.isUpToDate(cr, prop),
 	}, nil
+}
+
+// resolveGetError inspects the error from GetPropositionByID and reports
+// whether it represents the proposition being gone. handled is false if err
+// doesn't match any known not-found case and should be treated as a real
+// error by the caller.
+func (e *external) resolveGetError(cr *iamv1.Proposition, externalName string, resp *iam.Response, err error) (obs managed.ExternalObservation, handled bool, herr error) {
+	if resp != nil && util.IsNotFoundOrInvalidID(resp.StatusCode()) {
+		return managed.ExternalObservation{ResourceExists: false}, true, nil
+	}
+	// GetPropositionByID searches rather than fetching by path, so a deleted
+	// proposition comes back as a successful response with zero results
+	// (ErrEmptyResults), not a 404 - handle that as not-found too.
+	if stderrors.Is(err, iam.ErrEmptyResults) {
+		return managed.ExternalObservation{ResourceExists: false}, true, nil
+	}
+	// HSDP's Proposition search returns 403 Forbidden (not a 404) when
+	// queried by the _id of a proposition that no longer exists, rather than
+	// an empty result set - apparently the org-scope check behind the _id
+	// filter can't resolve once the entity's gone. Fall back to listing by
+	// organization and checking whether externalName is still present, so a
+	// real permission problem elsewhere doesn't get silently swallowed by
+	// treating every 403 as not-found.
+	if resp != nil && resp.StatusCode() == http.StatusForbidden && cr.Spec.ForProvider.OrganizationID != nil {
+		gone, gerr := e.propositionGone(*cr.Spec.ForProvider.OrganizationID, externalName)
+		if gerr != nil {
+			return managed.ExternalObservation{}, true, errors.Wrap(gerr, "cannot verify proposition via list fallback")
+		}
+		if gone {
+			return managed.ExternalObservation{ResourceExists: false}, true, nil
+		}
+	}
+	return managed.ExternalObservation{}, false, nil
+}
+
+// propositionGone lists the propositions under organizationID and reports
+// whether id is absent from the results, working around GetPropositionByID
+// returning 403 instead of a real not-found once a proposition is deleted.
+func (e *external) propositionGone(organizationID, id string) (bool, error) {
+	props, _, err := e.client.IAM.Propositions.GetPropositions(&iam.GetPropositionsOptions{
+		OrganizationID: &organizationID,
+	})
+	if err != nil {
+		if stderrors.Is(err, iam.ErrEmptyResults) {
+			return true, nil
+		}
+		return false, err
+	}
+	for _, p := range *props {
+		if p.ID == id {
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
 func (e *external) isUpToDate(cr *iamv1.Proposition, prop *iam.Proposition) bool {

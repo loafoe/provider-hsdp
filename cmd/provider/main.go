@@ -36,14 +36,10 @@ import (
 	changelogsv1alpha1 "github.com/crossplane/crossplane-runtime/v2/apis/changelogs/proto/v1alpha1"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/controller"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/feature"
-	"github.com/crossplane/crossplane-runtime/v2/pkg/gate"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/logging"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/ratelimiter"
-	"github.com/crossplane/crossplane-runtime/v2/pkg/reconciler/customresourcesgate"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/reconciler/managed"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/statemetrics"
-	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"github.com/loafoe/provider-hsdp/apis"
 	hsdp "github.com/loafoe/provider-hsdp/internal/controller"
@@ -91,11 +87,10 @@ func main() {
 			SyncPeriod: syncInterval,
 		},
 
-		// The crd-gate controller (used for safe-start) lists and watches
-		// every CustomResourceDefinition in the cluster. controller-runtime's
-		// default 2 minute CacheSyncTimeout is too tight on clusters with a
-		// large number of CRDs, causing the provider to crash-loop on
-		// startup before its cache ever finishes syncing.
+		// On clusters with a very large number of existing resources,
+		// controller-runtime's default 2 minute CacheSyncTimeout can be too
+		// tight for informers to finish their initial list/watch, causing
+		// the provider to crash-loop on startup. Give it more headroom.
 		Controller: ctrlconfig.Controller{
 			CacheSyncTimeout: 10 * time.Minute,
 		},
@@ -116,7 +111,6 @@ func main() {
 	kingpin.FatalIfError(err, "Cannot create controller manager")
 
 	kingpin.FatalIfError(apis.AddToScheme(mgr.GetScheme()), "Cannot add HSDP APIs to scheme")
-	kingpin.FatalIfError(apiextensionsv1.AddToScheme(mgr.GetScheme()), "Cannot add CustomResourceDefinition to scheme")
 
 	metricRecorder := managed.NewMRMetricRecorder()
 	stateMetrics := statemetrics.NewMRStateMetrics()
@@ -130,7 +124,6 @@ func main() {
 		PollInterval:            *pollInterval,
 		GlobalRateLimiter:       ratelimiter.NewGlobal(*maxReconcileRate),
 		Features:                &feature.Flags{},
-		Gate:                    new(gate.Gate[schema.GroupVersionKind]),
 		MetricOptions: &controller.MetricOptions{
 			PollStateMetricInterval: *pollStateMetricInterval,
 			MRMetrics:               metricRecorder,
@@ -158,7 +151,6 @@ func main() {
 		o.ChangeLogOptions = &clo
 	}
 
-	kingpin.FatalIfError(customresourcesgate.Setup(mgr, o), "Cannot setup CRD gate controller")
 	kingpin.FatalIfError(hsdp.SetupGated(mgr, o), "Cannot setup HSDP controllers")
 	kingpin.FatalIfError(mgr.Start(ctrl.SetupSignalHandler()), "Cannot start controller manager")
 }

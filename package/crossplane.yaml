@@ -9,16 +9,4 @@ metadata:
     meta.crossplane.io/description: |
       A native (non-upjet) Crossplane provider for the Philips DIP/HSDP
       platform, compatible with the legacy upjet-based provider-hsdp.
-spec:
-  capabilities:
-    - safe-start
-  controller:
-    permissionRequests:
-      - apiGroups:
-          - apiextensions.k8s.io
-        resources:
-          - customresourcedefinitions
-        verbs:
-          - get
-          - list
-          - watch
+spec: {}

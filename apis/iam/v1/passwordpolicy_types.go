@@ -31,9 +31,15 @@ type ChallengePolicyParameters struct {
 	// +optional
 	DefaultQuestions []string `json:"defaultQuestions,omitempty"`
 
-	// MinAnswerLength for challenge answers.
+	// MinAnswerCount is the minimum number of challenge answers a user must
+	// answer when attempting to reset their password.
 	// +optional
-	MinAnswerLength *int `json:"minAnswerLength,omitempty"`
+	MinAnswerCount *int `json:"minAnswerCount,omitempty"`
+
+	// MinQuestionCount is the minimum number of challenge questions a user
+	// must answer when setting challenge question answers.
+	// +optional
+	MinQuestionCount *int `json:"minQuestionCount,omitempty"`
 
 	// MaxIncorrectAttempts before lockout.
 	// +optional

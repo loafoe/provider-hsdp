@@ -11,6 +11,8 @@ import (
 	reference "github.com/crossplane/crossplane-runtime/v2/pkg/reference"
 	errors "github.com/pkg/errors"
 	client "sigs.k8s.io/controller-runtime/pkg/client"
+
+	iamv1 "github.com/loafoe/provider-hsdp/apis/iam/v1"
 )
 
 // ResolveReferences of this Application.
@@ -90,6 +92,33 @@ func (mg *DeviceType) ResolveReferences(ctx context.Context, c client.Reader) er
 	}
 	mg.Spec.ForProvider.DeviceGroupID = reference.ToPtrValue(rsp.ResolvedValue)
 	mg.Spec.ForProvider.DeviceGroupRef = rsp.ResolvedReference
+
+	return nil
+}
+
+// ResolveReferences of this Proposition.
+func (mg *Proposition) ResolveReferences(ctx context.Context, c client.Reader) error {
+	r := reference.NewAPINamespacedResolver(c, mg)
+
+	var rsp reference.NamespacedResolutionResponse
+	var err error
+
+	rsp, err = r.Resolve(ctx, reference.NamespacedResolutionRequest{
+		CurrentValue: mg.Spec.ForProvider.OrganizationID,
+		Extract:      reference.ExternalName(),
+		Namespace:    mg.GetNamespace(),
+		Reference:    mg.Spec.ForProvider.OrganizationRef,
+		Selector:     mg.Spec.ForProvider.OrganizationSelector,
+		To: reference.To{
+			List:    &iamv1.OrganizationList{},
+			Managed: &iamv1.Organization{},
+		},
+	})
+	if err != nil {
+		return errors.Wrap(err, "mg.Spec.ForProvider.OrganizationID")
+	}
+	mg.Spec.ForProvider.OrganizationID = rsp.ResolvedValue
+	mg.Spec.ForProvider.OrganizationRef = rsp.ResolvedReference
 
 	return nil
 }

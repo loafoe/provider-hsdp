@@ -19,3 +19,10 @@ spec:
     accessTokenLifetime: 3600
     refreshTokenLifetime: 86400
     tokenEndpointAuthMethod: private_key_jwt
+    # Validity of the generated credentials, in months. Immutable.
+    validity: 12
+    # Bring your own certificate instead of a provider-generated key pair.
+    # Mutually exclusive with privateKeySecretRef. Only applied at creation.
+    # selfManagedCertificateSecretRef:
+    #   name: example-service-certificate
+    #   key: certificate

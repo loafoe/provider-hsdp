@@ -18,6 +18,7 @@ package emailtemplate
 
 import (
 	"context"
+	"encoding/base64"
 
 	"github.com/crossplane/crossplane-runtime/v2/pkg/controller"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/event"
@@ -172,9 +173,8 @@ func (e *external) isUpToDate(cr *iamv1.EmailTemplate, template *iam.EmailTempla
 	if fp.Subject != nil && *fp.Subject != template.Subject {
 		return false
 	}
-	if fp.Message != nil && *fp.Message != template.Message {
-		return false
-	}
+	// Message can't be diffed here: DIP's read API never returns it, and
+	// Update() is a no-op (DIP doesn't support updating email templates).
 	return true
 }
 
@@ -208,7 +208,8 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 		template.From = *fp.From
 	}
 	if fp.Message != nil {
-		template.Message = *fp.Message
+		// DIP requires the message body to be base64-encoded on the wire.
+		template.Message = base64.StdEncoding.EncodeToString([]byte(*fp.Message))
 	}
 	if fp.Link != nil {
 		template.Link = *fp.Link
@@ -220,6 +221,7 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 	}
 
 	meta.SetExternalName(cr, created.ID)
+	cr.Status.AtProvider.MessageBase64 = util.StringPtrOrNil(created.Message)
 
 	return managed.ExternalCreation{}, nil
 }

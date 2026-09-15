@@ -51,10 +51,28 @@ type ServiceParameters struct {
 	// +optional
 	ApplicationSelector *xpv1.NamespacedSelector `json:"applicationSelector,omitempty"`
 
-	// PrivateKeySecretRef optionally references a secret containing a private key.
-	// If not provided, a key pair will be generated.
+	// PrivateKeySecretRef optionally references a secret containing a PEM RSA
+	// private key. When set, a self-signed certificate is generated from this
+	// key and uploaded to DIP in place of the provider-generated one. Only
+	// applied at creation time; later changes to the secret are not observed
+	// or re-applied. Mutually exclusive with SelfManagedCertificateSecretRef.
 	// +optional
 	PrivateKeySecretRef *xpv1.SecretKeySelector `json:"privateKeySecretRef,omitempty"`
+
+	// SelfManagedCertificateSecretRef optionally references a secret
+	// containing a PEM x509 certificate (whose private key is held
+	// externally) to use instead of a provider-generated key pair. The
+	// certificate's CommonName must be "<name>." (the service Name plus a
+	// trailing dot). Only applied at creation time; later changes to the
+	// secret are not observed or re-applied. Mutually exclusive with
+	// PrivateKeySecretRef.
+	// +optional
+	SelfManagedCertificateSecretRef *xpv1.SecretKeySelector `json:"selfManagedCertificateSecretRef,omitempty"`
+
+	// Validity of the service credentials, in months. Minimum: 1, Maximum:
+	// 600 (5 years), Default: 12. Immutable after creation.
+	// +optional
+	Validity *int64 `json:"validity,omitempty"`
 
 	// Scopes available to this service.
 	// +optional

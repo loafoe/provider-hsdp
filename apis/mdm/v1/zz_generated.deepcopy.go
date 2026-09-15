@@ -779,6 +779,16 @@ func (in *PropositionParameters) DeepCopyInto(out *PropositionParameters) {
 		*out = new(string)
 		**out = **in
 	}
+	if in.OrganizationRef != nil {
+		in, out := &in.OrganizationRef, &out.OrganizationRef
+		*out = new(v2.NamespacedReference)
+		(*in).DeepCopyInto(*out)
+	}
+	if in.OrganizationSelector != nil {
+		in, out := &in.OrganizationSelector, &out.OrganizationSelector
+		*out = new(v2.NamespacedSelector)
+		(*in).DeepCopyInto(*out)
+	}
 	if in.PropositionGUID != nil {
 		in, out := &in.PropositionGUID, &out.PropositionGUID
 		*out = new(string)

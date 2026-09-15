@@ -18,6 +18,8 @@ package service
 
 import (
 	"context"
+	"crypto/x509"
+	"encoding/pem"
 
 	"github.com/crossplane/crossplane-runtime/v2/pkg/controller"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/event"
@@ -29,6 +31,8 @@ import (
 	xpv1 "github.com/crossplane/crossplane/apis/v2/core/v2"
 	"github.com/philips-software/go-dip-api/iam"
 	"github.com/pkg/errors"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -118,11 +122,42 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 		return nil, errors.Wrap(err, errNewClient)
 	}
 
-	return &external{client: dipClient}, nil
+	return &external{client: dipClient, kube: c.kube, namespace: m.GetNamespace()}, nil
 }
 
 type external struct {
-	client *dip.Client
+	client    *dip.Client
+	kube      client.Client
+	namespace string
+}
+
+// getSecretValue reads key (defaulting to defaultKey if unset) from the
+// secret referenced by ref, defaulting the secret's namespace to namespace.
+func (e *external) getSecretValue(ctx context.Context, ref xpv1.SecretKeySelector, namespace, defaultKey string) (string, error) {
+	nn := types.NamespacedName{
+		Name:      ref.Name,
+		Namespace: ref.Namespace,
+	}
+	if nn.Namespace == "" {
+		nn.Namespace = namespace
+	}
+
+	secret := &corev1.Secret{}
+	if err := e.kube.Get(ctx, nn, secret); err != nil {
+		return "", errors.Wrap(err, "cannot get secret")
+	}
+
+	key := ref.Key
+	if key == "" {
+		key = defaultKey
+	}
+
+	value, ok := secret.Data[key]
+	if !ok {
+		return "", errors.Errorf("secret %s/%s does not have key %s", nn.Namespace, nn.Name, key)
+	}
+
+	return string(value), nil
 }
 
 func (e *external) Observe(ctx context.Context, mg resource.Managed) (managed.ExternalObservation, error) {
@@ -175,20 +210,8 @@ func (e *external) isUpToDate(cr *iamv1.Service, service *iam.Service) bool {
 	return true
 }
 
-func (e *external) Create(ctx context.Context, mg resource.Managed) (managed.ExternalCreation, error) {
-	cr, ok := mg.(*iamv1.Service)
-	if !ok {
-		return managed.ExternalCreation{}, errors.New(errNotService)
-	}
-
-	cr.Status.SetConditions(xpv1.Creating())
-
-	fp := cr.Spec.ForProvider
-
-	service := iam.Service{
-		Name: fp.Name,
-	}
-
+// applyServiceFields copies the optional creatable fields of fp onto service.
+func applyServiceFields(service *iam.Service, fp *iamv1.ServiceParameters) {
 	if fp.Description != nil {
 		service.Description = *fp.Description
 	}
@@ -204,11 +227,54 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 	if fp.AccessTokenLifetime != nil {
 		service.AccessTokenLifetime = int(*fp.AccessTokenLifetime)
 	}
+	if fp.Validity != nil {
+		service.Validity = int(*fp.Validity)
+	}
 	// Note: RefreshTokenLifetime and TokenEndpointAuthMethod are not supported in Service struct
+}
+
+// applySelfManagedCredentials uploads a self-managed private key or
+// certificate to the just-created service, if requested by fp.
+func (e *external) applySelfManagedCredentials(ctx context.Context, created iam.Service, fp *iamv1.ServiceParameters) error {
+	if fp.PrivateKeySecretRef != nil {
+		if err := e.setSelfManagedPrivateKey(ctx, created, *fp.PrivateKeySecretRef); err != nil {
+			return errors.Wrap(err, "cannot set self-managed private key")
+		}
+	}
+	if fp.SelfManagedCertificateSecretRef != nil {
+		if err := e.setSelfManagedCertificate(ctx, created, *fp.SelfManagedCertificateSecretRef); err != nil {
+			return errors.Wrap(err, "cannot set self-managed certificate")
+		}
+	}
+	return nil
+}
+
+func (e *external) Create(ctx context.Context, mg resource.Managed) (managed.ExternalCreation, error) {
+	cr, ok := mg.(*iamv1.Service)
+	if !ok {
+		return managed.ExternalCreation{}, errors.New(errNotService)
+	}
+
+	cr.Status.SetConditions(xpv1.Creating())
+
+	fp := cr.Spec.ForProvider
+
+	if fp.PrivateKeySecretRef != nil && fp.SelfManagedCertificateSecretRef != nil {
+		return managed.ExternalCreation{}, errors.New("privateKeySecretRef and selfManagedCertificateSecretRef are mutually exclusive")
+	}
+
+	service := iam.Service{
+		Name: fp.Name,
+	}
+	applyServiceFields(&service, &fp)
 
 	created, _, err := e.client.IAM.Services.CreateService(service)
 	if err != nil {
 		return managed.ExternalCreation{}, errors.Wrap(err, "cannot create service")
+	}
+
+	if err := e.applySelfManagedCredentials(ctx, *created, &fp); err != nil {
+		return managed.ExternalCreation{}, err
 	}
 
 	meta.SetExternalName(cr, created.ID)
@@ -227,6 +293,49 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 	}
 
 	return managed.ExternalCreation{ConnectionDetails: connectionDetails(created)}, nil
+}
+
+// setSelfManagedPrivateKey reads a PEM RSA private key from the secret
+// referenced by ref, generates a self-signed certificate from it, and
+// uploads it to DIP in place of the provider-generated key pair.
+func (e *external) setSelfManagedPrivateKey(ctx context.Context, service iam.Service, ref xpv1.SecretKeySelector) error {
+	pemKey, err := e.getSecretValue(ctx, ref, e.namespace, "privateKey")
+	if err != nil {
+		return err
+	}
+
+	block, _ := pem.Decode([]byte(iam.FixPEM(pemKey)))
+	if block == nil {
+		return errors.New("cannot decode PEM private key")
+	}
+	privateKey, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+	if err != nil {
+		return errors.Wrap(err, "cannot parse private key")
+	}
+
+	_, _, err = e.client.IAM.Services.UpdateServiceCertificate(service, privateKey)
+	return err
+}
+
+// setSelfManagedCertificate reads a PEM x509 certificate from the secret
+// referenced by ref and uploads it to DIP in place of the
+// provider-generated certificate.
+func (e *external) setSelfManagedCertificate(ctx context.Context, service iam.Service, ref xpv1.SecretKeySelector) error {
+	pemCert, err := e.getSecretValue(ctx, ref, e.namespace, "certificate")
+	if err != nil {
+		return err
+	}
+
+	block, _ := pem.Decode([]byte(iam.FixPEM(pemCert)))
+	if block == nil {
+		return errors.New("cannot decode PEM certificate")
+	}
+	if _, err := x509.ParseCertificate(block.Bytes); err != nil {
+		return errors.Wrap(err, "cannot parse certificate")
+	}
+
+	_, _, err = e.client.IAM.Services.UpdateServiceCertificateDER(service, block.Bytes)
+	return err
 }
 
 // connectionDetails assembles the credential material returned by DIP at
@@ -257,23 +366,7 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 		ID:   meta.GetExternalName(cr),
 		Name: fp.Name,
 	}
-
-	if fp.Description != nil {
-		service.Description = *fp.Description
-	}
-	if fp.ApplicationID != nil {
-		service.ApplicationID = *fp.ApplicationID
-	}
-	if fp.Scopes != nil {
-		service.Scopes = fp.Scopes
-	}
-	if fp.DefaultScopes != nil {
-		service.DefaultScopes = fp.DefaultScopes
-	}
-	if fp.AccessTokenLifetime != nil {
-		service.AccessTokenLifetime = int(*fp.AccessTokenLifetime)
-	}
-	// Note: RefreshTokenLifetime and TokenEndpointAuthMethod are not supported in Service struct
+	applyServiceFields(&service, &fp)
 
 	_, _, err := e.client.IAM.Services.UpdateService(service)
 	if err != nil {

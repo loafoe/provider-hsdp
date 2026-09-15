@@ -96,6 +96,21 @@ type GroupParameters struct {
 	// ServiceSelector selects the Services that are members of this group.
 	// +optional
 	ServiceSelector *xpv1.NamespacedSelector `json:"serviceSelector,omitempty"`
+
+	// DeviceIDs are the GUIDs of the Devices that are members of this group.
+	// +optional
+	// +crossplane:generate:reference:type=Device
+	// +crossplane:generate:reference:refFieldName=DeviceRefs
+	// +crossplane:generate:reference:selectorFieldName=DeviceSelector
+	DeviceIDs []string `json:"deviceIds,omitempty"`
+
+	// DeviceRefs reference the Devices that are members of this group.
+	// +optional
+	DeviceRefs []xpv1.NamespacedReference `json:"deviceRefs,omitempty"`
+
+	// DeviceSelector selects the Devices that are members of this group.
+	// +optional
+	DeviceSelector *xpv1.NamespacedSelector `json:"deviceSelector,omitempty"`
 }
 
 // GroupObservation are the observable fields of a Group.
@@ -117,6 +132,10 @@ type GroupObservation struct {
 	// AssignedServiceIDs are the GUIDs of the Services that are currently
 	// members of this group, as observed from DIP.
 	AssignedServiceIDs []string `json:"assignedServiceIds,omitempty"`
+
+	// AssignedDeviceIDs are the GUIDs of the Devices that are currently
+	// members of this group, as observed from DIP.
+	AssignedDeviceIDs []string `json:"assignedDeviceIds,omitempty"`
 }
 
 // GroupSpec defines the desired state of a Group.

@@ -83,6 +83,12 @@ type EmailTemplateObservation struct {
 
 	// From address as returned by DIP.
 	From *string `json:"from,omitempty"`
+
+	// MessageBase64 is the base64-encoded message body actually sent to DIP.
+	// DIP's API requires the message body to be base64-encoded on the wire
+	// and doesn't return it on read, so this is only ever populated at
+	// creation time, from the payload we sent.
+	MessageBase64 *string `json:"messageBase64,omitempty"`
 }
 
 // EmailTemplateSpec defines the desired state of an EmailTemplate.

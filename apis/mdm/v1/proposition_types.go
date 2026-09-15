@@ -37,7 +37,18 @@ type PropositionParameters struct {
 
 	// OrganizationID is the IAM organization GUID.
 	// +kubebuilder:validation:Required
+	// +crossplane:generate:reference:type=github.com/loafoe/provider-hsdp/apis/iam/v1.Organization
+	// +crossplane:generate:reference:refFieldName=OrganizationRef
+	// +crossplane:generate:reference:selectorFieldName=OrganizationSelector
 	OrganizationID string `json:"organizationId"`
+
+	// OrganizationRef references an IAM Organization.
+	// +optional
+	OrganizationRef *xpv1.NamespacedReference `json:"organizationRef,omitempty"`
+
+	// OrganizationSelector selects an IAM Organization.
+	// +optional
+	OrganizationSelector *xpv1.NamespacedSelector `json:"organizationSelector,omitempty"`
 
 	// PropositionGUID is the IAM proposition GUID (optional, for linking).
 	// +optional

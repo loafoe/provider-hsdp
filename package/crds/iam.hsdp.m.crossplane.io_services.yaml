@@ -163,8 +163,11 @@ spec:
                       rule: self == oldSelf
                   privateKeySecretRef:
                     description: |-
-                      PrivateKeySecretRef optionally references a secret containing a private key.
-                      If not provided, a key pair will be generated.
+                      PrivateKeySecretRef optionally references a secret containing a PEM RSA
+                      private key. When set, a self-signed certificate is generated from this
+                      key and uploaded to DIP in place of the provider-generated one. Only
+                      applied at creation time; later changes to the secret are not observed
+                      or re-applied. Mutually exclusive with SelfManagedCertificateSecretRef.
                     properties:
                       key:
                         description: The key to select.
@@ -189,9 +192,39 @@ spec:
                     items:
                       type: string
                     type: array
+                  selfManagedCertificateSecretRef:
+                    description: |-
+                      SelfManagedCertificateSecretRef optionally references a secret
+                      containing a PEM x509 certificate (whose private key is held
+                      externally) to use instead of a provider-generated key pair. The
+                      certificate's CommonName must be "<name>." (the service Name plus a
+                      trailing dot). Only applied at creation time; later changes to the
+                      secret are not observed or re-applied. Mutually exclusive with
+                      PrivateKeySecretRef.
+                    properties:
+                      key:
+                        description: The key to select.
+                        type: string
+                      name:
+                        description: Name of the secret.
+                        type: string
+                      namespace:
+                        description: Namespace of the secret.
+                        type: string
+                    required:
+                    - key
+                    - name
+                    - namespace
+                    type: object
                   tokenEndpointAuthMethod:
                     description: TokenEndpointAuthMethod (e.g., private_key_jwt).
                     type: string
+                  validity:
+                    description: |-
+                      Validity of the service credentials, in months. Minimum: 1, Maximum:
+                      600 (5 years), Default: 12. Immutable after creation.
+                    format: int64
+                    type: integer
                 required:
                 - name
                 type: object

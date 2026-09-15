@@ -246,6 +246,13 @@ spec:
                   id:
                     description: ID is the GUID of the email template.
                     type: string
+                  messageBase64:
+                    description: |-
+                      MessageBase64 is the base64-encoded message body actually sent to DIP.
+                      DIP's API requires the message body to be base64-encoded on the wire
+                      and doesn't return it on read, so this is only ever populated at
+                      creation time, from the payload we sent.
+                    type: string
                   subject:
                     description: Subject line as returned by DIP.
                     type: string

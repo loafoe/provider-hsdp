@@ -188,6 +188,12 @@ func (e *external) populateAssignedIDs(cr *iamv1.Group, externalName string, gro
 	}
 	cr.Status.AtProvider.AssignedServiceIDs = assignedServiceIDs
 
+	assignedDeviceIDs, err := e.assignedMemberIDs(externalName, "Device")
+	if err != nil {
+		return errors.Wrap(err, "cannot get devices assigned to group")
+	}
+	cr.Status.AtProvider.AssignedDeviceIDs = assignedDeviceIDs
+
 	return nil
 }
 
@@ -245,6 +251,9 @@ func (e *external) isUpToDate(cr *iamv1.Group, group *iam.Group) bool {
 		return false
 	}
 	if !sameIDs(desiredIDs(fp.ServiceIDs, fp.ServiceRefs, fp.ServiceSelector), cr.Status.AtProvider.AssignedServiceIDs) {
+		return false
+	}
+	if !sameIDs(desiredIDs(fp.DeviceIDs, fp.DeviceRefs, fp.DeviceSelector), cr.Status.AtProvider.AssignedDeviceIDs) {
 		return false
 	}
 	return true
@@ -317,6 +326,12 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 	toAddServices, toRemoveServices := diffIDs(desiredIDs(fp.ServiceIDs, fp.ServiceRefs, fp.ServiceSelector), cr.Status.AtProvider.AssignedServiceIDs)
 	if err := e.reconcileMembers(ctx, group, toAddServices, toRemoveServices,
 		e.client.IAM.Groups.AddServices, e.client.IAM.Groups.RemoveServices, "services"); err != nil {
+		return managed.ExternalUpdate{}, err
+	}
+
+	toAddDevices, toRemoveDevices := diffIDs(desiredIDs(fp.DeviceIDs, fp.DeviceRefs, fp.DeviceSelector), cr.Status.AtProvider.AssignedDeviceIDs)
+	if err := e.reconcileMembers(ctx, group, toAddDevices, toRemoveDevices,
+		e.client.IAM.Groups.AddDevices, e.client.IAM.Groups.RemoveDevices, "devices"); err != nil {
 		return managed.ExternalUpdate{}, err
 	}
 

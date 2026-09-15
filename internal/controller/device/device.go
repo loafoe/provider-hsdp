@@ -14,10 +14,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package passwordpolicy
+package device
 
 import (
 	"context"
+	"time"
 
 	"github.com/crossplane/crossplane-runtime/v2/pkg/controller"
 	"github.com/crossplane/crossplane-runtime/v2/pkg/event"
@@ -29,6 +30,8 @@ import (
 	xpv1 "github.com/crossplane/crossplane/apis/v2/core/v2"
 	"github.com/philips-software/go-dip-api/iam"
 	"github.com/pkg/errors"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -39,16 +42,17 @@ import (
 )
 
 const (
-	errNotPasswordPolicy = "managed resource is not a PasswordPolicy"
-	errTrackPCUsage      = "cannot track ProviderConfig usage"
-	errGetPC             = "cannot get ProviderConfig"
-	errGetCreds          = "cannot get credentials"
-	errNewClient         = "cannot create DIP client"
+	errNotDevice    = "managed resource is not a Device"
+	errTrackPCUsage = "cannot track ProviderConfig usage"
+	errGetPC        = "cannot get ProviderConfig"
+	errGetCreds     = "cannot get credentials"
+	errNewClient    = "cannot create DIP client"
+	errGetPassword  = "cannot get password from secret"
 )
 
-// Setup adds a controller that reconciles PasswordPolicy managed resources.
+// Setup adds a controller that reconciles Device managed resources.
 func Setup(mgr ctrl.Manager, o controller.Options) error {
-	name := managed.ControllerName(iamv1.PasswordPolicyGroupKind)
+	name := managed.ControllerName(iamv1.DeviceGroupKind)
 
 	opts := []managed.ReconcilerOption{
 		managed.WithExternalConnector(&connector{
@@ -70,13 +74,13 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 	// cache before the real GUID is known.
 	opts = append(opts, managed.WithInitializers())
 
-	r := managed.NewReconciler(mgr, resource.ManagedKind(iamv1.PasswordPolicyGroupVersionKind), opts...)
+	r := managed.NewReconciler(mgr, resource.ManagedKind(iamv1.DeviceGroupVersionKind), opts...)
 
 	return ctrl.NewControllerManagedBy(mgr).
 		Named(name).
 		WithOptions(o.ForControllerRuntime()).
 		WithEventFilter(resource.DesiredStateChanged()).
-		For(&iamv1.PasswordPolicy{}).
+		For(&iamv1.Device{}).
 		Complete(ratelimiter.NewReconciler(name, r, o.GlobalRateLimiter))
 }
 
@@ -86,9 +90,9 @@ type connector struct {
 }
 
 func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.ExternalClient, error) {
-	cr, ok := mg.(*iamv1.PasswordPolicy)
+	cr, ok := mg.(*iamv1.Device)
 	if !ok {
-		return nil, errors.New(errNotPasswordPolicy)
+		return nil, errors.New(errNotDevice)
 	}
 
 	if err := c.usage.Track(ctx, cr); err != nil {
@@ -118,17 +122,46 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.E
 		return nil, errors.Wrap(err, errNewClient)
 	}
 
-	return &external{client: dipClient}, nil
+	return &external{client: dipClient, kube: c.kube, namespace: m.GetNamespace()}, nil
 }
 
 type external struct {
-	client *dip.Client
+	client    *dip.Client
+	kube      client.Client
+	namespace string
+}
+
+func (e *external) getPassword(ctx context.Context, ref xpv1.SecretKeySelector, namespace string) (string, error) {
+	nn := types.NamespacedName{
+		Name:      ref.Name,
+		Namespace: ref.Namespace,
+	}
+	if nn.Namespace == "" {
+		nn.Namespace = namespace
+	}
+
+	secret := &corev1.Secret{}
+	if err := e.kube.Get(ctx, nn, secret); err != nil {
+		return "", errors.Wrap(err, "cannot get secret")
+	}
+
+	key := ref.Key
+	if key == "" {
+		key = "password"
+	}
+
+	password, ok := secret.Data[key]
+	if !ok {
+		return "", errors.Errorf("secret %s/%s does not have key %s", nn.Namespace, nn.Name, key)
+	}
+
+	return string(password), nil
 }
 
 func (e *external) Observe(ctx context.Context, mg resource.Managed) (managed.ExternalObservation, error) {
-	cr, ok := mg.(*iamv1.PasswordPolicy)
+	cr, ok := mg.(*iamv1.Device)
 	if !ok {
-		return managed.ExternalObservation{}, errors.New(errNotPasswordPolicy)
+		return managed.ExternalObservation{}, errors.New(errNotDevice)
 	}
 
 	externalName := meta.GetExternalName(cr)
@@ -140,133 +173,90 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 		return managed.ExternalObservation{ResourceExists: false}, nil
 	}
 
-	policy, resp, err := e.client.IAM.PasswordPolicies.GetPasswordPolicyByID(externalName)
+	device, resp, err := e.client.IAM.Devices.GetDeviceByID(externalName)
 	if err != nil {
 		if resp != nil && util.IsNotFoundOrInvalidID(resp.StatusCode()) {
 			return managed.ExternalObservation{ResourceExists: false}, nil
 		}
-		return managed.ExternalObservation{}, errors.Wrap(err, "cannot get password policy")
+		return managed.ExternalObservation{}, errors.Wrap(err, "cannot get device")
 	}
-	if policy == nil {
+	if device == nil {
 		return managed.ExternalObservation{ResourceExists: false}, nil
 	}
 
-	cr.Status.AtProvider.ID = &policy.ID
-	cr.Status.AtProvider.ExpiryPeriodInDays = &policy.ExpiryPeriodInDays
-	cr.Status.AtProvider.HistoryCount = &policy.HistoryCount
+	cr.Status.AtProvider.ID = &device.ID
+	cr.Status.AtProvider.IsActive = &device.IsActive
+	if device.RegistrationDate != nil {
+		cr.Status.AtProvider.RegistrationDate = util.StringPtrOrNil(device.RegistrationDate.Format(time.RFC3339))
+	}
 
 	cr.Status.SetConditions(xpv1.Available())
 
 	return managed.ExternalObservation{
 		ResourceExists:   true,
-		ResourceUpToDate: e.isUpToDate(cr, policy),
+		ResourceUpToDate: e.isUpToDate(cr, device),
 	}, nil
 }
 
-func (e *external) isUpToDate(cr *iamv1.PasswordPolicy, policy *iam.PasswordPolicy) bool {
+func (e *external) isUpToDate(cr *iamv1.Device, device *iam.Device) bool {
 	fp := cr.Spec.ForProvider
-	c := policy.Complexity
-	checks := []struct {
-		spec   *int
-		actual int
-	}{
-		{fp.MinLength, c.MinLength},
-		{fp.MaxLength, c.MaxLength},
-		{fp.MinLowercase, c.MinLowerCase},
-		{fp.MinUppercase, c.MinUpperCase},
-		{fp.MinNumeric, c.MinNumerics},
-		{fp.MinSpecialChars, c.MinSpecialChars},
+
+	if fp.Type != device.Type {
+		return false
 	}
-	if fp.ChallengePolicy != nil && policy.ChallengePolicy != nil {
-		checks = append(checks,
-			struct {
-				spec   *int
-				actual int
-			}{fp.ChallengePolicy.MinAnswerCount, policy.ChallengePolicy.MinAnswerCount},
-			struct {
-				spec   *int
-				actual int
-			}{fp.ChallengePolicy.MinQuestionCount, policy.ChallengePolicy.MinQuestionCount},
-			struct {
-				spec   *int
-				actual int
-			}{fp.ChallengePolicy.MaxIncorrectAttempts, policy.ChallengePolicy.MaxIncorrectAttempts},
-		)
+	if fp.Text != nil && *fp.Text != device.Text {
+		return false
 	}
-	for _, check := range checks {
-		if check.spec != nil && *check.spec != check.actual {
-			return false
-		}
+	if fp.ForTest != nil && *fp.ForTest != device.ForTest {
+		return false
 	}
 	return true
 }
 
-func applyComplexityFields(policy *iam.PasswordPolicy, fp *iamv1.PasswordPolicyParameters) {
-	if fp.MinLength != nil {
-		policy.Complexity.MinLength = *fp.MinLength
-	}
-	if fp.MaxLength != nil {
-		policy.Complexity.MaxLength = *fp.MaxLength
-	}
-	if fp.MinLowercase != nil {
-		policy.Complexity.MinLowerCase = *fp.MinLowercase
-	}
-	if fp.MinUppercase != nil {
-		policy.Complexity.MinUpperCase = *fp.MinUppercase
-	}
-	if fp.MinNumeric != nil {
-		policy.Complexity.MinNumerics = *fp.MinNumeric
-	}
-	if fp.MinSpecialChars != nil {
-		policy.Complexity.MinSpecialChars = *fp.MinSpecialChars
-	}
-}
-
-func applyPolicyFields(policy *iam.PasswordPolicy, fp *iamv1.PasswordPolicyParameters) {
-	if fp.ManagingOrganizationID != nil {
-		policy.ManagingOrganization = *fp.ManagingOrganizationID
-	}
-	if fp.ExpiryPeriodInDays != nil {
-		policy.ExpiryPeriodInDays = *fp.ExpiryPeriodInDays
-	}
-	if fp.HistoryCount != nil {
-		policy.HistoryCount = *fp.HistoryCount
-	}
-	applyComplexityFields(policy, fp)
-	if fp.ChallengesEnabled != nil {
-		policy.ChallengesEnabled = *fp.ChallengesEnabled
-	}
-	if fp.ChallengePolicy != nil {
-		policy.ChallengePolicy = &iam.ChallengePolicy{}
-		if fp.ChallengePolicy.DefaultQuestions != nil {
-			policy.ChallengePolicy.DefaultQuestions = fp.ChallengePolicy.DefaultQuestions
-		}
-		if fp.ChallengePolicy.MaxIncorrectAttempts != nil {
-			policy.ChallengePolicy.MaxIncorrectAttempts = *fp.ChallengePolicy.MaxIncorrectAttempts
-		}
-		if fp.ChallengePolicy.MinAnswerCount != nil {
-			policy.ChallengePolicy.MinAnswerCount = *fp.ChallengePolicy.MinAnswerCount
-		}
-		if fp.ChallengePolicy.MinQuestionCount != nil {
-			policy.ChallengePolicy.MinQuestionCount = *fp.ChallengePolicy.MinQuestionCount
-		}
-	}
-}
-
 func (e *external) Create(ctx context.Context, mg resource.Managed) (managed.ExternalCreation, error) {
-	cr, ok := mg.(*iamv1.PasswordPolicy)
+	cr, ok := mg.(*iamv1.Device)
 	if !ok {
-		return managed.ExternalCreation{}, errors.New(errNotPasswordPolicy)
+		return managed.ExternalCreation{}, errors.New(errNotDevice)
 	}
 
 	cr.Status.SetConditions(xpv1.Creating())
 
-	policy := iam.PasswordPolicy{}
-	applyPolicyFields(&policy, &cr.Spec.ForProvider)
+	fp := cr.Spec.ForProvider
 
-	created, _, err := e.client.IAM.PasswordPolicies.CreatePasswordPolicy(policy)
+	password, err := e.getPassword(ctx, fp.PasswordSecretRef, e.namespace)
 	if err != nil {
-		return managed.ExternalCreation{}, errors.Wrap(err, "cannot create password policy")
+		return managed.ExternalCreation{}, errors.Wrap(err, errGetPassword)
+	}
+
+	device := iam.Device{
+		LoginID: fp.LoginID,
+		DeviceExtID: iam.DeviceIdentifier{
+			System: fp.DeviceExtIDSystem,
+			Value:  fp.DeviceExtIDValue,
+			Type: iam.CodeableConcept{
+				Code: fp.DeviceExtIDTypeCode,
+			},
+		},
+		Password:          password,
+		Type:              fp.Type,
+		OrganizationID:    fp.OrganizationID,
+		GlobalReferenceID: fp.GlobalReferenceID,
+		ApplicationID:     fp.ApplicationID,
+	}
+
+	if fp.DeviceExtIDTypeText != nil {
+		device.DeviceExtID.Type.Text = *fp.DeviceExtIDTypeText
+	}
+	if fp.Text != nil {
+		device.Text = *fp.Text
+	}
+	if fp.ForTest != nil {
+		device.ForTest = *fp.ForTest
+	}
+
+	created, _, err := e.client.IAM.Devices.CreateDevice(device)
+	if err != nil {
+		return managed.ExternalCreation{}, errors.Wrap(err, "cannot create device")
 	}
 
 	meta.SetExternalName(cr, created.ID)
@@ -275,28 +265,37 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 }
 
 func (e *external) Update(ctx context.Context, mg resource.Managed) (managed.ExternalUpdate, error) {
-	cr, ok := mg.(*iamv1.PasswordPolicy)
+	cr, ok := mg.(*iamv1.Device)
 	if !ok {
-		return managed.ExternalUpdate{}, errors.New(errNotPasswordPolicy)
+		return managed.ExternalUpdate{}, errors.New(errNotDevice)
 	}
 
-	policy := iam.PasswordPolicy{
-		ID: meta.GetExternalName(cr),
-	}
-	applyPolicyFields(&policy, &cr.Spec.ForProvider)
+	fp := cr.Spec.ForProvider
 
-	_, _, err := e.client.IAM.PasswordPolicies.UpdatePasswordPolicy(policy)
+	device := iam.Device{
+		ID:   meta.GetExternalName(cr),
+		Type: fp.Type,
+	}
+
+	if fp.Text != nil {
+		device.Text = *fp.Text
+	}
+	if fp.ForTest != nil {
+		device.ForTest = *fp.ForTest
+	}
+
+	_, _, err := e.client.IAM.Devices.UpdateDevice(device)
 	if err != nil {
-		return managed.ExternalUpdate{}, errors.Wrap(err, "cannot update password policy")
+		return managed.ExternalUpdate{}, errors.Wrap(err, "cannot update device")
 	}
 
 	return managed.ExternalUpdate{}, nil
 }
 
 func (e *external) Delete(ctx context.Context, mg resource.Managed) (managed.ExternalDelete, error) {
-	cr, ok := mg.(*iamv1.PasswordPolicy)
+	cr, ok := mg.(*iamv1.Device)
 	if !ok {
-		return managed.ExternalDelete{}, errors.New(errNotPasswordPolicy)
+		return managed.ExternalDelete{}, errors.New(errNotDevice)
 	}
 
 	cr.Status.SetConditions(xpv1.Deleting())
@@ -306,9 +305,9 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) (managed.Ext
 		return managed.ExternalDelete{}, nil
 	}
 
-	_, _, err := e.client.IAM.PasswordPolicies.DeletePasswordPolicy(iam.PasswordPolicy{ID: externalName})
+	_, _, err := e.client.IAM.Devices.DeleteDevice(iam.Device{ID: externalName})
 	if err != nil {
-		return managed.ExternalDelete{}, errors.Wrap(err, "cannot delete password policy")
+		return managed.ExternalDelete{}, errors.Wrap(err, "cannot delete device")
 	}
 
 	return managed.ExternalDelete{}, nil

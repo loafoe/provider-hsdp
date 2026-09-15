@@ -1,0 +1,24 @@
+apiVersion: iam.hsdp.m.crossplane.io/v1
+kind: Device
+metadata:
+  name: example-device
+  namespace: crossplane-system
+spec:
+  providerConfigRef:
+    name: default
+  forProvider:
+    loginId: example-device-001
+    passwordSecretRef:
+      name: example-device-password
+      key: password
+    type: MEDICAL_DEVICE
+    globalReferenceId: example-device-001-ref
+    deviceExtIdSystem: urn:oid:1.2.3.4.5
+    deviceExtIdValue: example-device-001
+    deviceExtIdTypeCode: SN
+    deviceExtIdTypeText: Serial Number
+    organizationRef:
+      name: example-org
+    applicationRef:
+      name: example-application
+    forTest: true
